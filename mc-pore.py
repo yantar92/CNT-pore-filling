@@ -19,7 +19,7 @@ class HardCarbonPoreModel:
         Initialize 2D Triangular Lattice Model with Real Units.
 
         Args:
-            pore_diameter_angstrom (float): Real diameter of the pore (Å).
+            pore_radius_angstrom (float): Real diameter of the pore (Å).
             na_bond_length_angstrom (float): NN distance for Na BCC (Å).
             grid_padding_angstrom (float): Extra space around pore (Å).
             defect_probability (float): Probability for carbon to be defective.
@@ -60,8 +60,8 @@ class HardCarbonPoreModel:
         self._initialize_circular_pore(self.radius_lattice_units)
         
         print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
-        print(f"  Real Pore Diameter: {self.PORE_DIAMETER:.2f} Å")
-        print(f"  Na-Na Bond Length:  {self.BOND_LENGTH:.5f} Å")
+        print(f"  Real Pore Diameter: {self.pore_radius * 2:.2f} Å")
+        print(f"  Na-Na Bond Length:  {self.bond_length:.5f} Å")
         print(f"  Lattice Radius:     {self.radius_lattice_units:.2f} units")
 
     def _initialize_circular_pore(self, radius):
@@ -119,11 +119,11 @@ class HardCarbonPoreModel:
 
 # --- Verification Run ---
 # Example: 20 Angstrom pore (typical HC nanopore size)
-model = HardCarbonPoreModel(pore_diameter_angstrom=20.0, 
+model = HardCarbonPoreModel(pore_radius_angstrom=10.0, 
                             na_bond_length_angstrom=3.59346)
 
 # Test Geometry
-center_idx = model.N // 2
+center_idx = model.grid_width // 2
 # Check a point roughly 10 Å away from center (Radius ~ 2.78 lattice units)
 # At 3 units away, it should be carbon.
 print(f"Center ({center_idx},{center_idx}) is Carbon? {model.is_carbon[center_idx, center_idx]}")
