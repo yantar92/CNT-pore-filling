@@ -4,17 +4,18 @@ import numpy as np
 
 
 class HardCarbonPoreModel:
-    def __init__(self,
-                 pore_radius_angstrom=10.0,
-                 # 3.72A experimental
-                 # 3.59346 optB88-vdW from our data
-                 na_bond_length_angstrom=3.59346, 
-                 grid_padding_angstrom=10.0,
-                 defect_probability=0.1,
-                 # eV
-                 energy_na_na=-1.0,
-                 energy_na_c=-0.5,
-                 energy_na_defect=-1.5):
+    def __init__(
+            self,
+            pore_radius_angstrom=10.0,
+            # 3.72A experimental
+            # 3.59346 optB88-vdW from our data
+            na_bond_length_angstrom=3.59346, 
+            grid_padding_angstrom=10.0,
+            defect_probability=0.1,
+            # eV
+            energy_na_na=-1.0,
+            energy_na_c=-0.5,
+            energy_na_defect=-1.5):
         """
         Initialize 2D Triangular Lattice Model with Real Units.
 
@@ -51,14 +52,16 @@ class HardCarbonPoreModel:
         }
 
         # 4. State Grid: 0 = Empty, 1 = Na filled
+        self.EMPTY = 0
+        self.FILLED = 1
         self.grid = np.zeros((self.grid_width, self.grid_width), dtype=int)
-        
+
         # 5. Structure Maps
         self.is_carbon = np.zeros((self.grid_width, self.grid_width), dtype=bool)
         self.is_defect = np.zeros((self.grid_width, self.grid_width), dtype=bool)
-        
+
         self._initialize_circular_pore(self.radius_lattice_units)
-        
+
         print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
         print(f"  Real Pore Diameter: {self.pore_radius * 2:.2f} Å")
         print(f"  Na-Na Bond Length:  {self.bond_length:.5f} Å")
@@ -97,29 +100,63 @@ class HardCarbonPoreModel:
                 valid_neighbors.append((nr, nc))
         return valid_neighbors
 
-    def calculate_local_energy_change(self, r, c, new_state):
-        """Calculates Delta E for changing state at (r,c)."""
-        current_state = self.grid[r, c]
-        if current_state == new_state: return 0.0
-            
-        def site_energy(state_val):
-            if state_val == 0: return 0.0
-            e_sum = 0.0
-            for nr, nc in self.get_neighbors(r, c):
-                if self.grid[nr, nc] == 1:
-                    e_sum += self.energies['Na_Na']
-                elif self.is_carbon[nr, nc]:
-                    if self.is_defect[nr, nc]:
-                        e_sum += self.energies['Na_Defect']
-                    else:
-                        e_sum += self.energies['Na_C']
-            return e_sum
+    def calculate_swap_energy(self, r1, c1, r2, c2):
+        """
+        Calculates Delta E for moving a particle from (r1, c1) to (r2, c2).
+        Assumes (r1, c1) is currently FILLED and (r2, c2) is EMPTY.
+        """
+        assert self.grid[r1, c1] == self.FILLED
+        assert self.grid[r2, c2] == self.EMPTY
+        # 1. Calculate energy cost of REMOVING from r1, c1
+        # Note: We compute this based on the CURRENT grid where r2,c2 is 0.
+        # So we don't worry about the 1-2 bond yet because it doesn't exist.
+        energy_removal = -self._get_site_interaction_energy(r1, c1)
 
-        return site_energy(new_state) - site_energy(current_state)
+        # 2. Calculate energy gain of ADDING to r2, c2
+        # Critically: We must ignore r1, c1 in this calculation
+        # because it is effectively empty during this move.
+        energy_addition = self._get_site_interaction_energy(
+            r2, c2, ignore_neighbor=(r1, c1))
+
+        return energy_removal + energy_addition
+
+    def calculate_local_energy_change(self, r, c, new_state):
+        """Calculates Delta E for changing state at single site (r,c).
+        NEW_STATE is either FILLED or EMPTY."""
+        assert new_state in (self.FILLED, self.EMPTY)
+        current_state = self.grid[r, c]
+        if current_state == new_state:
+            return 0.0
+
+        # Energy of the particle if it exists
+        interaction_energy = self._get_site_interaction_energy(r, c)
+
+        if new_state == self.FILLED:
+            return interaction_energy  # Energy to add particle
+        return -interaction_energy  # Energy to remove particle
+
+    def _get_site_interaction_energy(self, r, c, ignore_neighbor=None):
+        """Helper to sum interactions for a FILLED particle at r, c.
+        IGNORE_NEIGHBOR can be a tuple (rn, cn) for the neighbor to be
+        ignored."""
+        e_sum = 0.0
+        for nr, nc in self.get_neighbors(r, c):
+            if (nr, nc) == ignore_neighbor:
+                continue
+
+            if self.grid[nr, nc] == self.FILLED:
+                e_sum += self.energies['Na_Na']
+            elif self.is_carbon[nr, nc]:
+                if self.is_defect[nr, nc]:
+                    e_sum += self.energies['Na_Defect']
+                else:
+                    e_sum += self.energies['Na_C']
+        return e_sum
+
 
 # --- Verification Run ---
 # Example: 20 Angstrom pore (typical HC nanopore size)
-model = HardCarbonPoreModel(pore_radius_angstrom=10.0, 
+model = HardCarbonPoreModel(pore_radius_angstrom=10.0,
                             na_bond_length_angstrom=3.59346)
 
 # Test Geometry
