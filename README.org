@@ -1,0 +1,147 @@
+#+begin_src emacs-lisp :noweb yes :var data=a4cf0588-3768-42f4-9716-a9578d2f8a1c[] :wrap
+data
+#+end_src
+
+#+RESULTS:
+#+begin_results
+
+The goal here is building a simple model that can capture main physics
+behind the pore filling *kinetics*. More specifically, we are aiming
+to capture the known dependence pore filling on the pore size.
+
+Additionally, I am personally interested to see how defect density
+affects the pore filling. This might give insight into
+intermediate-sized pores being filled first as reported by [[id:kitsu2023-revealing-sodium-storage-958][Iglesias,
+Toney AEM 2023]]. May refer to [[id:d1c49c46-bbea-4a8e-b1f0-04b906852de6][Methods]] in [[id:7f7cdaab-352b-4180-a730-4758343d4131][Na intercalation in expanded
+graphite in the presence of defects]] for typical concentration numbers
+(per carbon atom).
+
+#+begin_src emacs-lisp :var data=hc-defect-concentrations[] :colnames no
+data
+#+end_src
+
+#+RESULTS:
+| Defect type         | Min concentration | Max concentration | More realistic max |
+| MV (5-9)            |                0% |                3% |               0.8% |
+| DV (5-8-5)          |              0.3% |              3.4% |               1.8% |
+| SW (5-7-7-5)        |              1.1% |              4.6% |               2.0% |
+| SW + MV (tentative) |                0% |              5.6% |               1.2% |
+
+To do this we will use a simple atomic 2d MC model (we may switch to
+3d later, but that should be not hard if we implement the model
+properly on programming side).
+Physical assumptions:
+1. Na will stay on a BBC-like lattice
+2. The Na lattice is surrounded by the pore walls made of carbons
+3. Na will be able to move across lattice by swaps - MC steps
+4. System energy will be defined by a sum of Na-Na and Na-C
+   interaction energies. For simplicity, we will take energies
+   as constants, but may make them a function of environment in
+   future. Na-Na interaction should be stronger than Na-C.
+   - At this point, *we deliberately omit* possible dependence of Na-Na
+     energy of the cluster size or distance from carbon that is well
+     known as Na becomes more metallic in larger pores. We will
+     examine this in the future, after building intial model.
+   - Whether this metallic character affects the *energy* is
+     speculative - we see different data for different functionals.
+     So, start simple. But optB88-vdW does show more pronounced
+     dependence, thus may need to consider later.
+5. Some carbons will be marked as defective. Their local Na-C
+   interaction energy will be lower than Na-Na, simulating defect
+   adsorption
+6. Na can leave the pore, assuming that energy difference inside vs
+   outside the pore is binding_energy - external chemical potential
+   (usually positive).
+   New Na enter the pore with inverse energy difference exponent.
+7. Temperature is constant
+8. Defect concentration and pore size may vary, but fixed for a given simulation
+9. Na is supplied from the pore walls, with adjustable speed per MC steps
+
+
+We will use a simplified MC model implemented in Python:
+1. The model is completely 2d
+2. We will simulate atomic jumps on a triangular Na lattice
+   The lattice spacing should be defined as a global constant.
+   We should start from simple BCC bulk Na bond length as lattice
+   spacing.
+   - This is indeed *not exactly true in reality* as the Na may not
+     exactly follow BCC-like lattice. However, existing pore
+     simulations do show that the pores that fit at least 2-3 Na
+     layers do exhibit BCC-like Na ordering [[id:youn2021-nanometer-size-na-810][Youn, Tateyama npj
+     Computational Materials 2021]], [[id:li2024-origin-of-fast-aef][Li, Hu Nature Energy 2024]], [[id:lin2025-unveiling-dominant-processes-721][Lin,
+     Tateyama AEM 2025]]. We may explore it in the future by doing
+     auxiliary MD simulations, but MC implies some kind of lattice, so
+     let's use triangular.
+3. We will not explicitly simulate carbon lattice for the pore wall,
+   but instead assume that the Na lattice infinitely continues with
+   pore boundary simply represented by carbons sitting in place of Na
+   according to the pore shape and size.
+   - we will compensate this assumption by scaling interaction energies
+4. The pore shape will be circular. The pore radius will be a
+   simulation constant that can be adjusted between the runs.
+   The radius will determine which Na sites will be active. All Na
+   sites beyond radius cutoff will not be considered.
+   - This assumption is indeed *very simplistic*, however, it is not
+     worse than the existing slit pores and close to CNT model of a
+     pore. We may consider changing the pore shape to slit pore (to
+     compare with DFT literature) or more complex shapes and should
+     design the code keeping this in mind.
+   - We may also consider 3d. It should not be impossible as later
+     addition with careful python implementation.
+   - We should also note that wedge pores in the literature are
+     similar oversimplification. The real pore shapes are quite
+     complex. For example 1M atoms Md simulation from [[id:putman2023-defining-graphenic-crystallites-7b3][Putman,
+     Suarez-Martinez Carbon 2023]] reveal various pore geometries,
+     between something more like wedge/slit pores to pores exhibiting
+     significant curvatures.
+5. The interaction energies will be defined for the nearest neighbors:
+   Na-Na and Na-C. We will take Na-Na from bulk BCC cohesion energies
+   (vs. vacuum). Na-C - same vs. vacuum; approximate from literature
+   with Na slit-shaped pore between graphene sheets DFT.
+   The defective sites will be represented by carbon* with different
+   (lower) Na-C* interaction energy. The energy to be taken from
+   single Na adsorption data.
+   - We do 2d, so the literature data on Na-Na energies may not be
+     exactly correct (it is for 3d), but, on the other hand, Na-C, and
+     Na-defect data will be closer to 2d as it generally corresponds
+     to surface adsorption. Getting this right is tricky, so we should
+     acknowledge that the 2d model is a simplification and instead
+     systematically look into how changing the interaction energies
+     affect our results.
+   - For the beginning, we will approximately scale interaction
+     energies from literature: Na-Na as 8/6 (neighbor counts in 3d vs
+     2d), Na-C as 0.7*Na-C(bulk). We are not aiming to be correct
+     here, just to get reasonable values. We will need to look at
+     different energy ratio later to catch the more accurate
+     dependencies.
+6. Defective carbon concentration will initially be set to maximum
+   possible, according to our estimates, but adjustable.
+7. The pore filling will be simulated by adding Na at *empty* Na sites
+   adjacent to carbons and possibly removing Na at filled Na sites
+   adjacent to carbons.
+   For each empty/filled Na site, Na creating is associated with
+   binding_en - chemical_potential and Na disappearance is associated
+   with binding_en - chem_pot. Similar for diffusion jumps (energy
+   difference).
+   - We can optionally try several approaches: (1) allow Na to appear
+     at any empty site adjacent to carbons; (2) allow Na to appear
+     only near defects; (3) near other Na; (4) 2+3 combined.
+8. We set temperature high enough to avoid freezing the
+   diffusion. With realistic interaction energies, RT should be good,
+   but will need to check.
+
+Now on what to use: classic Metropolis vs. Rejection-free KMC.
+rejection-free KMC should be more accurate, but its classic
+implementations require accurate knowledge of barriers involved.
+We do not know those. So, let's stick to Metropolis.
+For time, normalize by the total number of sites and use simple random
+evens for jump attempts (indiscriminate of empty/filled/boundary sites).
+
+Visualizations:
+1. Lattice visualization with Na, empty sites, Carbons, and defective
+   carbons color-marked. Snapshots at different time (normalized MC step#).
+2. Pore filling percentage relative to max possible Na filling over time.
+3. Statistics about number of Na atoms adjacent to defects, other Na,
+   and internal pore vacuum vs time.
+#+end_results
+
