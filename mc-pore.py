@@ -1,6 +1,5 @@
 """
 Metropolis Monte Carlo Simulation for Hard Carbon Pore Filling.
-Extends the initial HardCarbonPoreModel with kinetic sampling.
 """
 
 import numpy as np
@@ -11,22 +10,18 @@ import time
 class HardCarbonPoreModel:
     def __init__(
             self,
-            pore_radius_angstrom=10.0,
+            pore_radius_angstrom=7.0,
             # 3.72A experimental
             # 3.59346 optB88-vdW from our data
             na_bond_length_angstrom=3.59346,
             grid_padding_angstrom=10.0,
-            defect_probability=0.1,
+            defect_probability=0.058,
             # Interaction Energies (eV)
-            # Default values scaled roughly as discussed in README/Planning
-            # Na-Na bond ~ 0.3 eV (approx for BCC coordination scaling)
-            # Na-C ~ 0.2 eV
-            # Na-Defect ~ 0.5 eV (stronger binding)
-            energy_na_na=-0.3,
-            energy_na_c=-0.2,
-            energy_na_defect=-0.5,
+            energy_na_na=-0.35,
+            energy_na_c=0.03,
+            energy_na_defect=-0.46,
             temperature_k=298.0,
-            chemical_potential_ev=-0.1):  # mu relative to bulk Na
+            chemical_potential_ev=0.001):  # mu relative to bulk Na
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
         """
