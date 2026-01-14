@@ -271,20 +271,32 @@ class HardCarbonPoreModel:
 
 # --- Simulation & Visualization Wrapper ---
 
-def run_simulation():
+def run_simulation(potential=None, steps=None, temp=None):
     # Simulation Parameters
-    MC_STEPS = 1000  # Total normalized steps (attempts per site)
-    SNAPSHOT_INTERVAL = 200
+    MC_STEPS = 20000 if steps is None else steps  # Total normalized steps (attempts per site)
+    SNAPSHOT_INTERVAL = 400
 
     # Initialize Model
     # Using weaker energies than original snippet to ensure dynamics at RT
+    # gradual filling
+    # 15A, 298K, -0.4V, 0.058 defects, -0.25 na-na, 0.03 na-c, -0.46 na-def
+    # full filling when temperature is hight enough to allow fast diffusion
+    # 15A, 800K, -0.4V, 0.058 defects, -0.25 na-na, 0.03 na-c, -0.46 na-def
+    # 15A, 298K, -0.27V, 0 defects, ...: barely enough to get walls filled
+    # same but -0.28V - no filling
+    # same threshold for 10A
+    # 5A ~-0.24V (mostly because all sites near walls have 3 carbon neighbors)
     model = HardCarbonPoreModel(
-        pore_radius_angstrom=7.0,
-        temperature_k=298,
-        chemical_potential_ev=0.001,
+        pore_radius_angstrom=15,
+        temperature_k=298 if temp is None else temp,
+        chemical_potential_ev=-0.4 if potential is None else potential,
         defect_probability=0.058,
+        # defect_probability=0,
         energy_na_na=-0.35,
+        # energy_na_na=-0.25,
         energy_na_c=0.03,
+        # Make filling boundary instantly
+        # energy_na_c=-0.03,
         energy_na_defect=-0.46,
     )
 
@@ -353,7 +365,7 @@ def run_simulation():
             
             # Plot sites with different markers/colors
             # Scale marker size based on lattice spacing
-            marker_scale = 100.0 / (model.grid_width / 2)  # Adjust scaling
+            marker_scale = 100.0 / (model.grid_width / 8)  # Adjust scaling
             
             if empty_x:
                 ax_grid.scatter(empty_x, empty_y, s=marker_scale, c='lightblue', 
@@ -380,7 +392,8 @@ def run_simulation():
             ax_grid.set_ylim(-max_vis_radius, max_vis_radius)
             ax_grid.set_title(f"Pore State (MCS: {int(current_mcs)})")
             ax_grid.legend(loc='upper right', fontsize='small')
-            ax_grid.grid(True, alpha=0.3)
+            # ax_grid.grid(True, alpha=0.3)
+            ax_grid.grid(False)
 
             # Update Stats Plot
             ax_stats.clear()
