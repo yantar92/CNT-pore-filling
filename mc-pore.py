@@ -403,6 +403,18 @@ def run_simulation(potential=None, steps=None, temp=None):
             ax_stats.set_ylabel('Filling %')
             ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f})")
             ax_stats.grid(True)
+            
+            # Add simulation parameters as text
+            param_text = (f"T = {model.T} K\n"
+                          f"μ = {model.mu:.3f} eV\n"
+                          f"R = {model.pore_radius} Å\n"
+                          f"defects = {model.defect_probability:.3f}\n"
+                          f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
+                          f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
+                          f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
+            ax_stats.text(0.02, 0.98, param_text, transform=ax_stats.transAxes,
+                         fontsize=8, verticalalignment='top',
+                         bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
             plt.draw()
             plt.pause(0.01)
