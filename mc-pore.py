@@ -159,47 +159,53 @@ class HardCarbonPoreModel:
                 continue
 
             neighbor_type = self.grid[nr, nc]
-            
+
             if neighbor_type == self.CARBON:
                 e_sum += self.energies['Na_C']
             elif neighbor_type == self.DEFECT:
                 e_sum += self.energies['Na_Defect']
             elif neighbor_type == self.NA:
                 e_sum += self.energies['Na_Na']
-                
+
         return e_sum
 
     def calculate_swap_energy(self, r1, c1, r2, c2):
         """Delta E for moving particle from (r1, c1) to (r2, c2)."""
+        assert self.grid[r2, c2] == self.EMPTY
         # Energy cost to remove from r1, c1
         energy_removal = -self._calculate_potential_energy_at_site(r1, c1)
-        # Energy gain to add to r2, c2 (ignoring the particle currently at r1, c1)
-        energy_addition = self._calculate_potential_energy_at_site(r2, c2, ignore_neighbor=(r1, c1))
+        # Energy gain to add to r2, c2 (ignoring the particle
+        # currently at r1, c1)
+        energy_addition = self._calculate_potential_energy_at_site(
+            r2, c2, ignore_neighbor=(r1, c1))
         return energy_removal + energy_addition
 
     def attempt_diffusion(self):
         """Attempts to move a particle to an empty neighbor."""
-        # Pick a random valid site to maintain detailed balance relative to area
+        # Pick a random valid site to maintain detailed balance
+        # relative to area.
         r, c = random.choice(self.valid_sites)
-        
+
         # Only proceed if there is a particle to move
         if self.grid[r, c] != self.NA:
             return False
 
         # Find empty valid neighbors
-        neighbors = self.get_neighbors(r, c) # Returns non-carbon neighbors
+        neighbors = self.get_neighbors(r, c)  # Returns non-carbon neighbors
         empty_neighbors = [n for n in neighbors if self.grid[n] == self.EMPTY]
-        
+
         if not empty_neighbors:
             return False
 
         nr, nc = random.choice(empty_neighbors)
-        
+
         # Calculate Delta E
         dE = self.calculate_swap_energy(r, c, nr, nc)
-        
+
         # Metropolis Acceptance
         if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
+            assert self.grid[r, c] == self.NA
+            assert self.grid[nr, nc] == self.EMPTY
             self.grid[r, c] = self.EMPTY
             self.grid[nr, nc] = self.NA
             return True
@@ -209,15 +215,15 @@ class HardCarbonPoreModel:
         """Attempts to Insert or Remove a particle at a surface site."""
         if not self.surface_sites:
             return False
-            
+
         r, c = random.choice(self.surface_sites)
-        
+
         if self.grid[r, c] == self.EMPTY:
             # --- INSERTION ---
             # Delta E = E_interaction - mu
             interaction = self._calculate_potential_energy_at_site(r, c)
             dE = interaction - self.mu
-            
+
             if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
                 self.grid[r, c] = self.NA
                 return True
@@ -226,7 +232,7 @@ class HardCarbonPoreModel:
             # Reverse of insertion: Delta E = -(E_interaction - mu)
             interaction = self._calculate_potential_energy_at_site(r, c)
             dE = -(interaction - self.mu)
-            
+
             if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
                 self.grid[r, c] = self.EMPTY
                 return True
@@ -242,12 +248,12 @@ class HardCarbonPoreModel:
         Executes one Monte Carlo Step (MCS).
         Traditionally 1 MCS = N_sites attempts.
         We perform logic for a single event here.
-        
+
         p_gcmc: Probability of attempting a GCMC move vs Diffusion move.
                 If None, defaults to ratio of surface sites to valid sites.
         """
         prob = p_gcmc if p_gcmc is not None else self.default_p_gcmc
-        
+
         if np.random.random() < prob:
             self.attempt_gcmc()
         else:
@@ -259,33 +265,37 @@ def run_simulation():
     # Simulation Parameters
     MC_STEPS = 1000  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 200
-    
+
     # Initialize Model
     # Using weaker energies than original snippet to ensure dynamics at RT
     model = HardCarbonPoreModel(
-        pore_radius_angstrom=15.0,
-        temperature_k=300,
-        chemical_potential_ev=-0.25, # Slightly attractive effective potential
-        defect_probability=0.15
+        pore_radius_angstrom=7.0,
+        temperature_k=298,
+        chemical_potential_ev=0.001,
+        defect_probability=0.058,
+        energy_na_na=-0.35,
+        energy_na_c=0.03,
+        energy_na_defect=-0.46,
     )
 
     total_sites = len(model.valid_sites)
     total_attempts = MC_STEPS * total_sites
-    
+
     # Tracking
     filling_history = []
     time_points = []
-    
+
     print(f"Starting Simulation: {total_attempts} attempts ({MC_STEPS} MCS)...")
     start_time = time.time()
 
     # Visualization Setup
     fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
-    
+    plt.show()
+
     for attempt in range(total_attempts):
         # Use default p_gcmc calculated by the model
         model.run_step()
-        
+
         # Record stats every 0.5 MCS (approx)
         if attempt % (total_sites // 2) == 0:
             filling_history.append(model.get_filling_fraction())
@@ -295,37 +305,37 @@ def run_simulation():
         current_mcs = attempt / total_sites
         if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0 or attempt == total_attempts - 1:
             print(f"  Step {int(current_mcs)}/{MC_STEPS}: Filling = {filling_history[-1]:.2%}")
-            
+
             # Update Grid Plot
             ax_grid.clear()
-            
+
             # Create a color map matrix
             plot_grid = np.zeros_like(model.grid, dtype=float)
-            plot_grid[:, :] = np.nan # Background
-            
+            plot_grid[:, :] = np.nan  # Background
+
             # Fill logic
             for r in range(model.grid_width):
                 for c in range(model.grid_width):
                     val = model.grid[r, c]
                     if val == model.CARBON:
-                        plot_grid[r, c] = 0.3 # Gray
+                        plot_grid[r, c] = 0.3  # Gray
                     elif val == model.DEFECT:
-                        plot_grid[r, c] = 0.6 # Dark Gray
+                        plot_grid[r, c] = 0.6  # Dark Gray
                     elif val == model.NA:
-                        plot_grid[r, c] = 1.0 # Yellow/Red
+                        plot_grid[r, c] = 1.0  # Yellow/Red
                     else: # EMPTY
-                        if not np.isnan(plot_grid[r, c]): # Don't overwrite walls if already set (though logic prevents this)
+                        if not np.isnan(plot_grid[r, c]):  # Don't overwrite walls if already set (though logic prevents this)
                              pass
                         else:
-                             plot_grid[r, c] = 0.0 # Blue/Empty
-            
+                             plot_grid[r, c] = 0.0  # Blue/Empty
+
             # Custom colormap handling could go here, simplistic imshow for now
             cmap = plt.get_cmap('viridis')
             cmap.set_bad(color='white')
-            
+
             ax_grid.imshow(plot_grid, cmap=cmap, origin='upper', vmin=0, vmax=1)
             ax_grid.set_title(f"Pore State (MCS: {int(current_mcs)})")
-            
+
             # Update Stats Plot
             ax_stats.clear()
             ax_stats.plot(time_points, filling_history, label='Filling Fraction')
@@ -334,7 +344,7 @@ def run_simulation():
             ax_stats.set_ylabel('Filling %')
             ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f})")
             ax_stats.grid(True)
-            
+
             plt.pause(0.01)
 
     print(f"Simulation Complete in {time.time() - start_time:.2f}s")
