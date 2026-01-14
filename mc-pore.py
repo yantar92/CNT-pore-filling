@@ -79,12 +79,19 @@ class HardCarbonPoreModel:
         print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
 
     def _initialize_circular_pore(self, radius):
-        """Creates a circular pore centered in the grid."""
-        center = self.grid_width // 2
+        """Creates a circular pore centered in the grid.
+RADIUS is the pore radius in lattice units."""
+        center_r = self.grid_width // 2
+        center_c = self.grid_width // 2
+        sqrt3_half = np.sqrt(3) / 2.0  # constant for triangular lattice geometry
+        
         for r in range(self.grid_width):
             for c in range(self.grid_width):
-                # Distance in offset coordinates (Euclidean approx for simplicity)
-                dist = np.sqrt((r - center)**2 + (c - center)**2)
+                # Convert offset coordinates to Cartesian lattice coordinates
+                # x = column + 0.5 * (row parity), y = sqrt(3)/2 * row
+                dx = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
+                dy = sqrt3_half * (r - center_r)
+                dist = np.sqrt(dx**2 + dy**2)
 
                 if dist >= radius:
                     if np.random.random() < self.defect_probability:
