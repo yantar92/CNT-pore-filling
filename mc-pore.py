@@ -259,6 +259,16 @@ class HardCarbonPoreModel:
         else:
             self.attempt_diffusion()
 
+    def get_triangular_coordinates(self, r, c):
+        """Convert grid indices to triangular lattice Cartesian coordinates."""
+        center_r = self.grid_width // 2
+        center_c = self.grid_width // 2
+        sqrt3_half = np.sqrt(3) / 2.0
+        
+        x = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
+        y = sqrt3_half * (r - center_r)
+        return x, y
+
 # --- Simulation & Visualization Wrapper ---
 
 def run_simulation():
@@ -290,7 +300,7 @@ def run_simulation():
 
     # Visualization Setup
     fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
-    plt.show()
+    plt.show(block=False)
 
     for attempt in range(total_attempts):
         # Use default p_gcmc calculated by the model
@@ -306,35 +316,71 @@ def run_simulation():
         if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0 or attempt == total_attempts - 1:
             print(f"  Step {int(current_mcs)}/{MC_STEPS}: Filling = {filling_history[-1]:.2%}")
 
-            # Update Grid Plot
+            # Update Grid Plot with triangular lattice visualization
             ax_grid.clear()
-
-            # Create a color map matrix
-            plot_grid = np.zeros_like(model.grid, dtype=float)
-            plot_grid[:, :] = np.nan  # Background
-
-            # Fill logic
+            
+            # Collect coordinates and colors for different site types
+            empty_x, empty_y = [], []
+            na_x, na_y = [], []
+            carbon_x, carbon_y = [], []
+            defect_x, defect_y = [], []
+            
+            # We'll visualize all sites within 1.5 times pore radius to see some walls
+            max_vis_radius = model.radius_lattice_units * 1.5
+            
             for r in range(model.grid_width):
                 for c in range(model.grid_width):
-                    val = model.grid[r, c]
-                    if val == model.CARBON:
-                        plot_grid[r, c] = 0.3  # Gray
-                    elif val == model.DEFECT:
-                        plot_grid[r, c] = 0.6  # Dark Gray
-                    elif val == model.NA:
-                        plot_grid[r, c] = 1.0  # Yellow/Red
-                    else: # EMPTY
-                        if not np.isnan(plot_grid[r, c]):  # Don't overwrite walls if already set (though logic prevents this)
-                             pass
-                        else:
-                             plot_grid[r, c] = 0.0  # Blue/Empty
-
-            # Custom colormap handling could go here, simplistic imshow for now
-            cmap = plt.get_cmap('viridis')
-            cmap.set_bad(color='white')
-
-            ax_grid.imshow(plot_grid, cmap=cmap, origin='upper', vmin=0, vmax=1)
+                    x, y = model.get_triangular_coordinates(r, c)
+                    dist = np.sqrt(x**2 + y**2)
+                    
+                    # Only plot sites within visualization radius
+                    if dist > max_vis_radius:
+                        continue
+                    
+                    site_type = model.grid[r, c]
+                    if site_type == model.EMPTY:
+                        empty_x.append(x)
+                        empty_y.append(y)
+                    elif site_type == model.NA:
+                        na_x.append(x)
+                        na_y.append(y)
+                    elif site_type == model.CARBON:
+                        carbon_x.append(x)
+                        carbon_y.append(y)
+                    elif site_type == model.DEFECT:
+                        defect_x.append(x)
+                        defect_y.append(y)
+            
+            # Plot sites with different markers/colors
+            # Scale marker size based on lattice spacing
+            marker_scale = 100.0 / (model.grid_width / 2)  # Adjust scaling
+            
+            if empty_x:
+                ax_grid.scatter(empty_x, empty_y, s=marker_scale, c='lightblue', 
+                               edgecolors='gray', linewidths=0.5, alpha=0.7, label='Empty')
+            if na_x:
+                ax_grid.scatter(na_x, na_y, s=marker_scale, c='red', 
+                               edgecolors='darkred', linewidths=0.5, alpha=0.9, label='Na')
+            if carbon_x:
+                ax_grid.scatter(carbon_x, carbon_y, s=marker_scale, c='black', 
+                               edgecolors='gray', linewidths=0.5, alpha=0.5, label='Carbon')
+            if defect_x:
+                ax_grid.scatter(defect_x, defect_y, s=marker_scale, c='orange', 
+                               edgecolors='darkorange', linewidths=0.5, alpha=0.8, label='Defect')
+            
+            # Draw pore boundary circle
+            theta = np.linspace(0, 2*np.pi, 100)
+            circle_x = model.radius_lattice_units * np.cos(theta)
+            circle_y = model.radius_lattice_units * np.sin(theta)
+            ax_grid.plot(circle_x, circle_y, 'k--', linewidth=1, alpha=0.7, label='Pore Boundary')
+            
+            # Set equal aspect ratio and limits
+            ax_grid.set_aspect('equal')
+            ax_grid.set_xlim(-max_vis_radius, max_vis_radius)
+            ax_grid.set_ylim(-max_vis_radius, max_vis_radius)
             ax_grid.set_title(f"Pore State (MCS: {int(current_mcs)})")
+            ax_grid.legend(loc='upper right', fontsize='small')
+            ax_grid.grid(True, alpha=0.3)
 
             # Update Stats Plot
             ax_stats.clear()
@@ -345,6 +391,7 @@ def run_simulation():
             ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f})")
             ax_stats.grid(True)
 
+            plt.draw()
             plt.pause(0.01)
 
     print(f"Simulation Complete in {time.time() - start_time:.2f}s")
