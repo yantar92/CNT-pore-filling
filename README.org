@@ -143,5 +143,24 @@ Visualizations:
 2. Pore filling percentage relative to max possible Na filling over time.
 3. Statistics about number of Na atoms adjacent to defects, other Na,
    and internal pore vacuum vs time.
+
+
+Bond energies:
+
+Na-Na: -1.04eV/atom cohesive energy from optB88-vdW.
+ Na-Na bond energy: -1.04/8 neighbors * 2 (shared) = -0.26eV/bond
+ We need to scale to 2D: 8 -> 6: -1.04/6 * 2 = -0.35eV/bond
+
+Na-C: optB88-vdW from [[id:lin2025-unveiling-dominant-processes-721][Lin, Tateyama AEM 2025]] 0.09eV/Na atom
+This is for Na adsorption on flat graphene sheet, so should correspond
+to several Na-C bonds. Let's take half - 3 bonds (they will naturally
+scale with curvature incorporating its effects).
+ Na-C: 0.09eV/3 = 0.03eV/Na-C bond
+
+Na-defect: optB88-vdW from [[id:lin2025-unveiling-dominant-processes-721][Lin, Tateyama AEM 2025]] -1.37eV/atom for monovacancy
+  SW and divacancy will be closer to 0, but let's keep it.
+  take same 3 neighbors: -0.46eV/bond
+  *We may consider introducing multiple defect types later*
+  
 #+end_results
 

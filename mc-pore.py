@@ -80,7 +80,7 @@ class HardCarbonPoreModel:
 
     def _initialize_circular_pore(self, radius):
         """Creates a circular pore centered in the grid.
-RADIUS is the pore radius in lattice units."""
+        RADIUS is the pore radius in lattice units."""
         center_r = self.grid_width // 2
         center_c = self.grid_width // 2
         sqrt3_half = np.sqrt(3) / 2.0  # constant for triangular lattice geometry
@@ -107,9 +107,9 @@ RADIUS is the pore radius in lattice units."""
                 # Initially everything else is EMPTY (0)
                 if self.grid[r, c] in (self.EMPTY, self.NA):
                     self.valid_sites.append((r, c))
-                    
+
                     # Check if it's a surface site (neighbor is carbon/defect)
-                    neighbors = self.get_neighbors(r, c, check_bounds_only=True)
+                    neighbors = self.get_neighbors(r, c, include_walls=True)
                     is_surface = False
                     for nr, nc in neighbors:
                         if self.grid[nr, nc] in (self.CARBON, self.DEFECT):
@@ -118,11 +118,11 @@ RADIUS is the pore radius in lattice units."""
                     if is_surface:
                         self.surface_sites.append((r, c))
 
-    def get_neighbors(self, r, c, check_bounds_only=False):
+    def get_neighbors(self, r, c, include_walls=False):
         """
         Returns list of neighbor coordinates for triangular lattice.
-        If check_bounds_only=True, returns all grid neighbors.
-        If check_bounds_only=False, returns only valid (non-carbon) neighbors.
+        If include_walls=True, returns all grid neighbors (including walls).
+        If include_walls=False, returns only accessible neighbors (EMPTY or NA).
         """
         candidates = [
             (r, c - 1), (r, c + 1),
@@ -136,7 +136,7 @@ RADIUS is the pore radius in lattice units."""
         valid_neighbors = []
         for nr, nc in candidates:
             if 0 <= nr < self.grid_width and 0 <= nc < self.grid_width:
-                if check_bounds_only:
+                if include_walls:
                     valid_neighbors.append((nr, nc))
                 else:
                     # Only return accessible sites (EMPTY or NA)
@@ -152,7 +152,7 @@ RADIUS is the pore radius in lattice units."""
         """
         e_sum = 0.0
         # Get all grid neighbors to check for Carbon/Defects
-        neighbors = self.get_neighbors(r, c, check_bounds_only=True)
+        neighbors = self.get_neighbors(r, c, include_walls=True)
         
         for nr, nc in neighbors:
             if (nr, nc) == ignore_neighbor:
