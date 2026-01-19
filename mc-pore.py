@@ -16,6 +16,7 @@ class HardCarbonPoreModel:
             na_bond_length_angstrom=3.59346,
             grid_padding_angstrom=10.0,
             defect_probability=0.058,
+            na_c_cutoff_angstrom=4.0,
             # Interaction Energies (eV)
             energy_na_na=-0.35,
             energy_na_c=-0.32,
@@ -24,11 +25,25 @@ class HardCarbonPoreModel:
             voltage=1.0):  # voltage relative to bulk Na
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
+        
+        Parameters:
+        pore_radius_angstrom (float): Pore radius in angstroms.
+        na_bond_length_angstrom (float): Na-Na bond length in angstroms.
+        grid_padding_angstrom (float): Padding around pore for visualization.
+        defect_probability (float): Probability of a carbon atom being defective.
+        na_c_cutoff_angstrom (float): Cutoff distance for Na-C interaction.
+        energy_na_na (float): Na-Na bond energy (eV).
+        energy_na_c (float): Na-normal carbon bond energy (eV).
+        energy_na_defect (float): Na-defective carbon bond energy (eV).
+        temperature_k (float): Temperature in Kelvin.
+        voltage (float): Voltage relative to bulk Na (V).
         """
         # 1. Geometry Constants
         self.bond_length = na_bond_length_angstrom
         self.pore_radius = pore_radius_angstrom
         self.defect_probability = defect_probability
+        self.na_c_cutoff = na_c_cutoff_angstrom
+        self.cutoff_lattice = self.na_c_cutoff / self.bond_length
 
         # 2. Lattice Units
         self.radius_lattice_units = pore_radius_angstrom / self.bond_length
@@ -83,6 +98,7 @@ class HardCarbonPoreModel:
         print(f"  Surface Sites: {len(self.surface_sites)}")
         print(f"  Defects: {self.defect_probability:.3f}")
         print(f"  Carbon‑wall defects (atomic): {self.n_defects_carbon}")
+        print(f"  Na‑C cutoff: {self.na_c_cutoff} Å ({self.cutoff_lattice:.2f} lattice units)")
         print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
 
     @property
@@ -167,58 +183,49 @@ class HardCarbonPoreModel:
         """
         Pre‑compute the carbon‑interaction energy for each lattice site.
         Uses the carbon ring generated in _initialize_circular_pore.
-        Each carbon atom is assigned to the nearest surface Na site (by angle).
-        The carbon interaction energy for a Na site is the sum of contributions
-        from its assigned carbon atoms, with defective carbons contributing a
-        stronger binding energy.
+        Each Na site interacts with all carbon atoms within cutoff_lattice distance.
+        Defective carbons contribute energy_na_defect, normal carbons energy_na_c.
         """
-        if not self.surface_sites:
-            return
+        assert self.surface_sites
 
-        # Carbon data already generated
-        carbon_angles = self.carbon_angles
+        # Carbon positions in lattice units (relative to pore center)
+        carbon_positions = self.carbon_positions_lattice
         defect_mask = self.carbon_defect_mask
-        N_carbons = len(carbon_angles)
+        N_carbons = len(carbon_positions)
 
-        # Angular positions of surface Na sites
-        na_angles = []
-        na_sites = []
-        for r, c in self.surface_sites:
+        # Counters for diagnostics
+        total_carbon_interactions = 0
+        total_defect_interactions = 0
+        sites_with_interaction = 0
+        sites_with_defect = 0
+
+        # Compute for all valid sites (inside pore)
+        for r, c in self.valid_sites:
             x, y = self.get_triangular_coordinates(r, c)
-            angle = np.arctan2(y, x)  # range [-π, π]
-            if angle < 0.0:
-                angle += 2.0 * np.pi  # map to [0, 2π)
-            na_angles.append(angle)
-            na_sites.append((r, c))
-
-        na_angles = np.array(na_angles)  # shape (N_na,)
-        N_na = len(na_angles)
-
-        # Compute pairwise circular angular distances
-        # diff[i,j] = angular distance between na_angles[i] and carbon_angles[j]
-        diff = np.abs(na_angles[:, None] - carbon_angles[None, :])  # shape (N_na, N_carbons)
-        diff = np.minimum(diff, 2.0 * np.pi - diff)  # circular distance
-        assigned_na_idx = np.argmin(diff, axis=0)  # shape (N_carbons,)
-
-        # Count carbon atoms per Na site
-        carbon_counts = np.bincount(assigned_na_idx, minlength=N_na)
-        # Count defective carbons per Na site
-        defect_counts = np.bincount(assigned_na_idx[defect_mask], minlength=N_na)
-
-        print("Number of Na-C bonds on surface: ", carbon_counts)
-        print("Number of adjacent Na-defect bonds", defect_counts)
-        # Compute carbon interaction energy for each surface site
-        for i, (r, c) in enumerate(na_sites):
-            n_c = carbon_counts[i]
-            n_def = defect_counts[i]
-            if n_c == 0:
-                energy = 0.0
-            else:
-                # Each normal carbon contributes energy_na_c, each
-                # defective carbon energy_na_defect
-                energy = (n_c - n_def) * self.energies['Na_C']
-                energy += n_def * self.energies['Na_Defect']
+            energy = 0.0
+            n_c = 0
+            n_def = 0
+            for (cx, cy), is_defect in zip(carbon_positions, defect_mask):
+                dist = np.sqrt((x - cx)**2 + (y - cy)**2)
+                if dist <= self.cutoff_lattice:
+                    total_carbon_interactions += 1
+                    if is_defect:
+                        energy += self.energies['Na_Defect']
+                        n_def += 1
+                        total_defect_interactions += 1
+                    else:
+                        energy += self.energies['Na_C']
+                        n_c += 1
             self.carbon_energy_map[r, c] = energy
+            if n_c + n_def > 0:
+                sites_with_interaction += 1
+                if n_def > 0:
+                    sites_with_defect += 1
+
+        # Diagnostic output
+        print(f"Carbon interactions: {total_carbon_interactions} total, {total_defect_interactions} with defects")
+        print(f"  Sites with carbon interaction: {sites_with_interaction}/{len(self.valid_sites)}")
+        print(f"  Sites with defect interaction: {sites_with_defect}/{len(self.valid_sites)}")
 
     def get_neighbors(self, r, c, include_walls=False):
         """
@@ -368,21 +375,25 @@ class HardCarbonPoreModel:
 
 # --- Simulation & Visualization Wrapper ---
 
-def run_simulation(voltage=None, steps=None, temp=None):
+def run_simulation(voltage=0.1, steps=None, temp=298, radius=10.0):
     # Simulation Parameters
     MC_STEPS = 20000 if steps is None else steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
 
     # Initialize Model
     model = HardCarbonPoreModel(
-        pore_radius_angstrom=20.0,
-        temperature_k=298 if temp is None else temp,
-        voltage=1.0 if voltage is None else voltage,
-        defect_probability=0.058,
+        pore_radius_angstrom=radius,
+        temperature_k=temp,
+        voltage=voltage,
+        # defect_probability=0.058,
+        defect_probability=0,
+        na_c_cutoff_angstrom=3.5,
         # defect_probability=0,
         energy_na_na=-0.35,
         energy_na_c=-0.32,
+        # energy_na_c=-0.24,  # 4 bonds norm
         energy_na_defect=-1.77,
+        # energy_na_defect=-1.69,  # 4 bonds norm
     )
 
     total_sites = len(model.valid_sites)
