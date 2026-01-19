@@ -48,8 +48,6 @@ class HardCarbonPoreModel:
         self.T = temperature_k
         self.beta = 1.0 / (self.kB * self.T)
         self.voltage = voltage
-        # We assume 3D, that's why 3
-        self.mu = -voltage + 3 * energy_na_na
 
         # 4. State Grid Constants
         self.EMPTY = 0
@@ -79,6 +77,13 @@ class HardCarbonPoreModel:
         print(f"  Valid Sites: {len(self.valid_sites)}")
         print(f"  Surface Sites: {len(self.surface_sites)}")
         print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
+
+    @property
+    def mu(self):
+        """Return chemical potential according to voltage and Na energies.
+        """
+        # We assume 2D, that's why 3
+        return -self.voltage + 3 * self.energies['Na_Na']
 
     def _initialize_circular_pore(self, radius):
         """Creates a circular pore centered in the grid.
