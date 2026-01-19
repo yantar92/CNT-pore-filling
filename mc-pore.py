@@ -79,9 +79,13 @@ class HardCarbonPoreModel:
         print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
         print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
         print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
-        print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
         print(f"  Valid Sites: {len(self.valid_sites)}")
         print(f"  Surface Sites: {len(self.surface_sites)}")
+        print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
+        n_defects = 0
+        for r, c in self.adjacent_wall_sites:
+            n_defects += 1 if self.grid[r, c] == self.DEFECT else 0
+        print(f"  Surface Carbons: {len(self.surface_sites)} ({n_defects} defects)")
         print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
 
     @property
@@ -100,7 +104,7 @@ class HardCarbonPoreModel:
         
         # Precompute distances and identify wall sites
         distances = [[0.0 for _ in range(self.grid_width)] for _ in range(self.grid_width)]
-        wall_sites = []
+        self.wall_sites = []
 
         for r in range(self.grid_width):
             for c in range(self.grid_width):
@@ -110,41 +114,40 @@ class HardCarbonPoreModel:
                 distances[r][c] = dist
 
                 if dist >= radius:
-                    wall_sites.append((r, c))
+                    self.wall_sites.append((r, c))
 
-        adjacent_wall_sites = []
-        if self.defect_placement == 'surface':
-            for r, c in wall_sites:
-                neighbors = self.get_neighbors(r, c, include_walls=True)
-                is_adjacent = False
-                for nr, nc in neighbors:
-                    if distances[nr][nc] < radius:
-                        is_adjacent = True
-                        break
-                if is_adjacent:
-                    adjacent_wall_sites.append((r, c))
+        self.adjacent_wall_sites = []
+        for r, c in self.wall_sites:
+            neighbors = self.get_neighbors(r, c, include_walls=True)
+            is_adjacent = False
+            for nr, nc in neighbors:
+                if distances[nr][nc] < radius:
+                    is_adjacent = True
+                    break
+            if is_adjacent:
+                self.adjacent_wall_sites.append((r, c))
 
         # Initialize all wall sites as carbon
-        for r, c in wall_sites:
+        for r, c in self.wall_sites:
             self.grid[r, c] = self.CARBON
 
         # Apply defect placement according to mode
         if self.defect_placement == 'random':
             # Bernoulli per wall site
-            for r, c in wall_sites:
+            for r, c in self.wall_sites:
                 if np.random.random() < self.defect_probability:
                     self.grid[r, c] = self.DEFECT
 
         elif self.defect_placement == 'surface':
             # Exact fraction of pore‑surface wall sites
-            if adjacent_wall_sites:
-                k = int(round(self.defect_probability * len(adjacent_wall_sites)))
+            if self.adjacent_wall_sites:
+                k = int(round(self.defect_probability * len(self.adjacent_wall_sites)))
                 if k <= 0:
                     defect_set = set()
-                elif k == len(adjacent_wall_sites):
-                    defect_set = set(adjacent_wall_sites)
+                elif k == len(self.adjacent_wall_sites):
+                    defect_set = set(self.adjacent_wall_sites)
                 else:
-                    defect_set = set(random.sample(adjacent_wall_sites, k))
+                    defect_set = set(random.sample(self.adjacent_wall_sites, k))
                 for r, c in defect_set:
                     self.grid[r, c] = self.DEFECT
 
