@@ -16,6 +16,7 @@ class HardCarbonPoreModel:
             na_bond_length_angstrom=3.59346,
             grid_padding_angstrom=10.0,
             defect_probability=0.058,
+            defect_placement='surface',  # 'random' or 'surface'
             # Interaction Energies (eV)
             energy_na_na=-0.35,
             energy_na_c=-0.32,
@@ -24,11 +25,15 @@ class HardCarbonPoreModel:
             voltage=1.0):  # voltage relative to bulk Na
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
+
+        defect_placement: 'random' (Bernoulli per wall site) or
+                          'surface' (exact fraction of pore‑surface wall sites).
         """
         # 1. Geometry Constants
         self.bond_length = na_bond_length_angstrom
         self.pore_radius = pore_radius_angstrom
         self.defect_probability = defect_probability
+        self.defect_placement = defect_placement
 
         # 2. Lattice Units
         self.radius_lattice_units = pore_radius_angstrom / self.bond_length
@@ -74,6 +79,7 @@ class HardCarbonPoreModel:
         print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
         print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
         print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
+        print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
         print(f"  Valid Sites: {len(self.valid_sites)}")
         print(f"  Surface Sites: {len(self.surface_sites)}")
         print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
@@ -92,19 +98,58 @@ class HardCarbonPoreModel:
         center_c = self.grid_width // 2
         sqrt3_half = np.sqrt(3) / 2.0  # constant for triangular lattice geometry
         
+        # Precompute distances and identify wall sites
+        distances = [[0.0 for _ in range(self.grid_width)] for _ in range(self.grid_width)]
+        wall_sites = []
+
         for r in range(self.grid_width):
             for c in range(self.grid_width):
-                # Convert offset coordinates to Cartesian lattice coordinates
-                # x = column + 0.5 * (row parity), y = sqrt(3)/2 * row
                 dx = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
                 dy = sqrt3_half * (r - center_r)
                 dist = np.sqrt(dx**2 + dy**2)
+                distances[r][c] = dist
 
                 if dist >= radius:
-                    if np.random.random() < self.defect_probability:
-                        self.grid[r, c] = self.DEFECT
-                    else:
-                        self.grid[r, c] = self.CARBON
+                    wall_sites.append((r, c))
+
+        adjacent_wall_sites = []
+        if self.defect_placement == 'surface':
+            for r, c in wall_sites:
+                neighbors = self.get_neighbors(r, c, include_walls=True)
+                is_adjacent = False
+                for nr, nc in neighbors:
+                    if distances[nr][nc] < radius:
+                        is_adjacent = True
+                        break
+                if is_adjacent:
+                    adjacent_wall_sites.append((r, c))
+
+        # Initialize all wall sites as carbon
+        for r, c in wall_sites:
+            self.grid[r, c] = self.CARBON
+
+        # Apply defect placement according to mode
+        if self.defect_placement == 'random':
+            # Bernoulli per wall site
+            for r, c in wall_sites:
+                if np.random.random() < self.defect_probability:
+                    self.grid[r, c] = self.DEFECT
+
+        elif self.defect_placement == 'surface':
+            # Exact fraction of pore‑surface wall sites
+            if adjacent_wall_sites:
+                k = int(round(self.defect_probability * len(adjacent_wall_sites)))
+                if k <= 0:
+                    defect_set = set()
+                elif k == len(adjacent_wall_sites):
+                    defect_set = set(adjacent_wall_sites)
+                else:
+                    defect_set = set(random.sample(adjacent_wall_sites, k))
+                for r, c in defect_set:
+                    self.grid[r, c] = self.DEFECT
+
+        else:
+            raise ValueError(f"Unknown defect_placement: {self.defect_placement}")
 
     def _classify_sites(self):
         """Identifies valid pore sites and surface sites (adjacent to walls)."""
@@ -278,7 +323,7 @@ class HardCarbonPoreModel:
 
 # --- Simulation & Visualization Wrapper ---
 
-def run_simulation(voltage=None, steps=None, temp=None):
+def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surface'):
     # Simulation Parameters
     MC_STEPS = 20000 if steps is None else steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
@@ -289,6 +334,7 @@ def run_simulation(voltage=None, steps=None, temp=None):
         temperature_k=298 if temp is None else temp,
         voltage=1.0 if voltage is None else voltage,
         defect_probability=0.058,
+        defect_placement=defect_placement,
         # defect_probability=0,
         energy_na_na=-0.35,
         energy_na_c=-0.32,
@@ -403,7 +449,7 @@ def run_simulation(voltage=None, steps=None, temp=None):
             param_text = (f"T = {model.T} K\n"
                           f"μ = {model.mu:.3f} eV\n"
                           f"R = {model.pore_radius} Å\n"
-                          f"defects = {model.defect_probability:.3f}\n"
+                          f"defects = {model.defect_probability:.3f} ({model.defect_placement}) ({model.defect_placement})\n"
                           f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
                           f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
                           f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
