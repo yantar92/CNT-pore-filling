@@ -450,9 +450,9 @@ def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surfac
             
             # Add simulation parameters as text
             param_text = (f"T = {model.T} K\n"
-                          f"μ = {model.mu:.3f} eV\n"
+                          f"V = {model.voltage:.2f} V\n"
                           f"R = {model.pore_radius} Å\n"
-                          f"defects = {model.defect_probability:.3f} ({model.defect_placement}) ({model.defect_placement})\n"
+                          f"defects = {model.defect_probability:.3f} ({model.defect_placement})\n"
                           f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
                           f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
                           f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
