@@ -153,26 +153,15 @@ class HardCarbonPoreModel:
 
     def _classify_sites(self):
         """Identifies valid pore sites and surface sites based on distance from pore center."""
-        center_r = self.grid_width // 2
-        center_c = self.grid_width // 2
-        sqrt3_half = np.sqrt(3) / 2.0
-
-        # Surface threshold: sites within this distance (lattice units) from the pore wall
-        surface_threshold = 1.0  # one Na‑bond length
-
         for r in range(self.grid_width):
             for c in range(self.grid_width):
-                # Convert grid indices to lattice coordinates
-                dx = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
-                dy = sqrt3_half * (r - center_r)
-                dist = np.sqrt(dx**2 + dy**2)
-
-                # Valid sites are inside the pore (not a wall)
-                if dist <= self.radius_lattice_units:
+                if self.grid[r, c] != self.CARBON:
                     self.valid_sites.append((r, c))
-                    # Surface sites are those close to the wall
-                    if dist > self.radius_lattice_units - surface_threshold:
-                        self.surface_sites.append((r, c))
+                    all_neighbors = self.get_neighbors(r, c, include_walls=True)
+                    for nr, nc in all_neighbors:
+                        if self.grid[nr, nc] == self.CARBON:
+                            self.surface_sites.append((r, c))
+                            break
 
     def _compute_carbon_energy_map(self):
         """
