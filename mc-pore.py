@@ -16,7 +16,6 @@ class HardCarbonPoreModel:
             na_bond_length_angstrom=3.59346,
             grid_padding_angstrom=10.0,
             defect_probability=0.058,
-            defect_placement='surface',  # 'random' or 'surface'
             # Interaction Energies (eV)
             energy_na_na=-0.35,
             energy_na_c=-0.32,
@@ -25,15 +24,11 @@ class HardCarbonPoreModel:
             voltage=1.0):  # voltage relative to bulk Na
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
-
-        defect_placement: 'random' (Bernoulli per wall site) or
-                          'surface' (exact fraction of pore‑surface wall sites).
         """
         # 1. Geometry Constants
         self.bond_length = na_bond_length_angstrom
         self.pore_radius = pore_radius_angstrom
         self.defect_probability = defect_probability
-        self.defect_placement = defect_placement
 
         # 2. Lattice Units
         self.radius_lattice_units = pore_radius_angstrom / self.bond_length
@@ -47,7 +42,7 @@ class HardCarbonPoreModel:
             'Na_C': energy_na_c,
             'Na_Defect': energy_na_defect
         }
-        
+
         # Boltzmann constant in eV/K
         self.kB = 8.617333262e-5 
         self.T = temperature_k
@@ -63,14 +58,19 @@ class HardCarbonPoreModel:
         # Grid initialization
         self.grid = np.zeros((self.grid_width, self.grid_width), dtype=int)
 
-        self._initialize_circular_pore(self.radius_lattice_units)
+        self._initialize_circular_pore()
         
         # 5. Pre-calculate Valid and Surface Sites for Efficiency
         self.valid_sites = []   # List of (r, c) inside the pore
         self.surface_sites = [] # List of (r, c) adjacent to carbon
         self._classify_sites()
 
-        # 6. Calculate default probabilities
+        # 6. Carbon energy map – precompute carbon interaction for each site
+        self.carbon_energy_map = np.zeros((self.grid_width, self.grid_width), dtype=float)
+        self.n_defects_carbon = 0  # number of defective carbon atoms on pore wall
+        self._compute_carbon_energy_map()
+
+        # 7. Calculate default probabilities
         if len(self.valid_sites) > 0:
             self.default_p_gcmc = len(self.surface_sites) / len(self.valid_sites)
         else:
@@ -81,11 +81,8 @@ class HardCarbonPoreModel:
         print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
         print(f"  Valid Sites: {len(self.valid_sites)}")
         print(f"  Surface Sites: {len(self.surface_sites)}")
-        print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
-        n_defects = 0
-        for r, c in self.adjacent_wall_sites:
-            n_defects += 1 if self.grid[r, c] == self.DEFECT else 0
-        print(f"  Surface Carbons: {len(self.surface_sites)} ({n_defects} defects)")
+        print(f"  Defects: {self.defect_probability:.3f}")
+        print(f"  Carbon‑wall defects (atomic): {self.n_defects_carbon}")
         print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
 
     @property
@@ -95,83 +92,142 @@ class HardCarbonPoreModel:
         # We assume 2D, that's why 3
         return -self.voltage + 3 * self.energies['Na_Na']
 
-    def _initialize_circular_pore(self, radius):
+    def _initialize_circular_pore(self):
         """Creates a circular pore centered in the grid.
-        RADIUS is the pore radius in lattice units."""
+        RADIUS is the pore radius in lattice units.
+        Sets grid cells outside the pore to CARBON (wall).
+        Also generates a realistic carbon ring along the pore circumference
+        with atomic defects, stored for energy calculations and visualization."""
         center_r = self.grid_width // 2
         center_c = self.grid_width // 2
-        sqrt3_half = np.sqrt(3) / 2.0  # constant for triangular lattice geometry
-        
-        # Precompute distances and identify wall sites
-        distances = [[0.0 for _ in range(self.grid_width)] for _ in range(self.grid_width)]
-        self.wall_sites = []
+        sqrt3_half = np.sqrt(3) / 2.0
 
+        # --- 1. Mark wall sites (outside pore) as CARBON in the grid ---
         for r in range(self.grid_width):
             for c in range(self.grid_width):
                 dx = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
                 dy = sqrt3_half * (r - center_r)
                 dist = np.sqrt(dx**2 + dy**2)
-                distances[r][c] = dist
+                # Offset to avoid Na close to C
+                if dist >= self.radius_lattice_units - 0.35:
+                    self.grid[r, c] = self.CARBON
 
-                if dist >= radius:
-                    self.wall_sites.append((r, c))
+        # --- 2. Generate carbon ring (realistic spacing, defects) ---
+        # Physical pore radius (Å) and lattice‑unit radius
+        R = self.pore_radius  # Å
 
-        self.adjacent_wall_sites = []
-        for r, c in self.wall_sites:
-            neighbors = self.get_neighbors(r, c, include_walls=True)
-            is_adjacent = False
-            for nr, nc in neighbors:
-                if distances[nr][nc] < radius:
-                    is_adjacent = True
-                    break
-            if is_adjacent:
-                self.adjacent_wall_sites.append((r, c))
+        # Carbon‑carbon bond length (Å)
+        a_CC = 1.42
+        circumference = 2.0 * np.pi * R
+        N_carbons = int(np.round(circumference / a_CC))
+        assert N_carbons > 1
 
-        # Initialize all wall sites as carbon
-        for r, c in self.wall_sites:
-            self.grid[r, c] = self.CARBON
-
-        # Apply defect placement according to mode
-        if self.defect_placement == 'random':
-            # Bernoulli per wall site
-            for r, c in self.wall_sites:
-                if np.random.random() < self.defect_probability:
-                    self.grid[r, c] = self.DEFECT
-
-        elif self.defect_placement == 'surface':
-            # Exact fraction of pore‑surface wall sites
-            if self.adjacent_wall_sites:
-                k = int(round(self.defect_probability * len(self.adjacent_wall_sites)))
-                if k <= 0:
-                    defect_set = set()
-                elif k == len(self.adjacent_wall_sites):
-                    defect_set = set(self.adjacent_wall_sites)
-                else:
-                    defect_set = set(random.sample(self.adjacent_wall_sites, k))
-                for r, c in defect_set:
-                    self.grid[r, c] = self.DEFECT
-
+        # Angular positions of carbon atoms (evenly spaced)
+        carbon_angles = np.linspace(0.0, 2.0 * np.pi, N_carbons, endpoint=False)
+        # Defect status (atomic concentration)
+        self.n_defects_carbon = round(N_carbons * self.defect_probability)
+        if self.n_defects_carbon > 0:
+            defect_indices = np.random.choice(
+                N_carbons, size=self.n_defects_carbon, replace=False)
+            defect_mask = np.zeros(N_carbons, dtype=bool)
+            defect_mask[defect_indices] = True
         else:
-            raise ValueError(f"Unknown defect_placement: {self.defect_placement}")
+            defect_mask = np.zeros(N_carbons, dtype=bool)
+
+        # This would be more suitable for ensemble, but let's not.
+        # defect_mask = np.random.rand(N_carbons) < self.defect_probability
+        # self.n_defects_carbon = np.sum(defect_mask)
+
+        # Store carbon data for later use (energy map & visualization)
+        self.carbon_angles = carbon_angles
+        self.carbon_defect_mask = defect_mask
+        # Positions in lattice units (scale by 1/bond_length)
+        scale = 1.0 / self.bond_length
+        self.carbon_positions_lattice = []
+        for theta in carbon_angles:
+            x_lat = (R * np.cos(theta)) * scale
+            y_lat = (R * np.sin(theta)) * scale
+            self.carbon_positions_lattice.append((x_lat, y_lat))
 
     def _classify_sites(self):
-        """Identifies valid pore sites and surface sites (adjacent to walls)."""
+        """Identifies valid pore sites and surface sites based on distance from pore center."""
+        center_r = self.grid_width // 2
+        center_c = self.grid_width // 2
+        sqrt3_half = np.sqrt(3) / 2.0
+
+        # Surface threshold: sites within this distance (lattice units) from the pore wall
+        surface_threshold = 1.0  # one Na‑bond length
+
         for r in range(self.grid_width):
             for c in range(self.grid_width):
-                # Valid sites are those that are not walls (CARBON or DEFECT)
-                # Initially everything else is EMPTY (0)
-                if self.grid[r, c] in (self.EMPTY, self.NA):
-                    self.valid_sites.append((r, c))
+                # Convert grid indices to lattice coordinates
+                dx = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
+                dy = sqrt3_half * (r - center_r)
+                dist = np.sqrt(dx**2 + dy**2)
 
-                    # Check if it's a surface site (neighbor is carbon/defect)
-                    neighbors = self.get_neighbors(r, c, include_walls=True)
-                    is_surface = False
-                    for nr, nc in neighbors:
-                        if self.grid[nr, nc] in (self.CARBON, self.DEFECT):
-                            is_surface = True
-                            break
-                    if is_surface:
+                # Valid sites are inside the pore (not a wall)
+                if dist <= self.radius_lattice_units:
+                    self.valid_sites.append((r, c))
+                    # Surface sites are those close to the wall
+                    if dist > self.radius_lattice_units - surface_threshold:
                         self.surface_sites.append((r, c))
+
+    def _compute_carbon_energy_map(self):
+        """
+        Pre‑compute the carbon‑interaction energy for each lattice site.
+        Uses the carbon ring generated in _initialize_circular_pore.
+        Each carbon atom is assigned to the nearest surface Na site (by angle).
+        The carbon interaction energy for a Na site is the sum of contributions
+        from its assigned carbon atoms, with defective carbons contributing a
+        stronger binding energy.
+        """
+        if not self.surface_sites:
+            return
+
+        # Carbon data already generated
+        carbon_angles = self.carbon_angles
+        defect_mask = self.carbon_defect_mask
+        N_carbons = len(carbon_angles)
+
+        # Angular positions of surface Na sites
+        na_angles = []
+        na_sites = []
+        for r, c in self.surface_sites:
+            x, y = self.get_triangular_coordinates(r, c)
+            angle = np.arctan2(y, x)  # range [-π, π]
+            if angle < 0.0:
+                angle += 2.0 * np.pi  # map to [0, 2π)
+            na_angles.append(angle)
+            na_sites.append((r, c))
+
+        na_angles = np.array(na_angles)  # shape (N_na,)
+        N_na = len(na_angles)
+
+        # Compute pairwise circular angular distances
+        # diff[i,j] = angular distance between na_angles[i] and carbon_angles[j]
+        diff = np.abs(na_angles[:, None] - carbon_angles[None, :])  # shape (N_na, N_carbons)
+        diff = np.minimum(diff, 2.0 * np.pi - diff)  # circular distance
+        assigned_na_idx = np.argmin(diff, axis=0)  # shape (N_carbons,)
+
+        # Count carbon atoms per Na site
+        carbon_counts = np.bincount(assigned_na_idx, minlength=N_na)
+        # Count defective carbons per Na site
+        defect_counts = np.bincount(assigned_na_idx[defect_mask], minlength=N_na)
+
+        print("Number of Na-C bonds on surface: ", carbon_counts)
+        print("Number of adjacent Na-defect bonds", defect_counts)
+        # Compute carbon interaction energy for each surface site
+        for i, (r, c) in enumerate(na_sites):
+            n_c = carbon_counts[i]
+            n_def = defect_counts[i]
+            if n_c == 0:
+                energy = 0.0
+            else:
+                # Each normal carbon contributes energy_na_c, each
+                # defective carbon energy_na_defect
+                energy = (n_c - n_def) * self.energies['Na_C']
+                energy += n_def * self.energies['Na_Defect']
+            self.carbon_energy_map[r, c] = energy
 
     def get_neighbors(self, r, c, include_walls=False):
         """
@@ -203,25 +259,20 @@ class HardCarbonPoreModel:
     def _calculate_potential_energy_at_site(self, r, c, ignore_neighbor=None):
         """
         Calculates the potential energy of a Sodium atom if it were placed at (r,c).
-        This sums interactions with existing neighbors.
+        This sums interactions with existing Na neighbors and adds the
+        pre-computed carbon interaction energy for this site.
         """
-        e_sum = 0.0
-        # Get all grid neighbors to check for Carbon/Defects
+        e_sum = self.carbon_energy_map[r, c]  # contribution from carbon wall
+
+        # Add Na‑Na interactions from neighbor Na atoms
         neighbors = self.get_neighbors(r, c, include_walls=True)
-        
         for nr, nc in neighbors:
             if (nr, nc) == ignore_neighbor:
                 continue
-
-            neighbor_type = self.grid[nr, nc]
-
-            if neighbor_type == self.CARBON:
-                e_sum += self.energies['Na_C']
-            elif neighbor_type == self.DEFECT:
-                e_sum += self.energies['Na_Defect']
-            elif neighbor_type == self.NA:
+            if self.grid[nr, nc] == self.NA:
                 e_sum += self.energies['Na_Na']
-
+            # CARBON and DEFECT neighbors are already accounted for in
+            # carbon_energy_map
         return e_sum
 
     def calculate_swap_energy(self, r1, c1, r2, c2):
@@ -326,7 +377,7 @@ class HardCarbonPoreModel:
 
 # --- Simulation & Visualization Wrapper ---
 
-def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surface'):
+def run_simulation(voltage=None, steps=None, temp=None):
     # Simulation Parameters
     MC_STEPS = 20000 if steps is None else steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
@@ -337,7 +388,6 @@ def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surfac
         temperature_k=298 if temp is None else temp,
         voltage=1.0 if voltage is None else voltage,
         defect_probability=0.058,
-        defect_placement=defect_placement,
         # defect_probability=0,
         energy_na_na=-0.35,
         energy_na_c=-0.32,
@@ -384,6 +434,7 @@ def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surfac
             # We'll visualize all sites within 1.5 times pore radius to see some walls
             max_vis_radius = model.radius_lattice_units * 1.5
             
+            # Na lattice sites (empty / occupied)
             for r in range(model.grid_width):
                 for c in range(model.grid_width):
                     x, y = model.get_triangular_coordinates(r, c)
@@ -400,12 +451,23 @@ def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surfac
                     elif site_type == model.NA:
                         na_x.append(x)
                         na_y.append(y)
-                    elif site_type == model.CARBON:
-                        carbon_x.append(x)
-                        carbon_y.append(y)
-                    elif site_type == model.DEFECT:
-                        defect_x.append(x)
-                        defect_y.append(y)
+                    # CARBON and DEFECT grid cells are not plotted (they are only
+                    # coarse wall markers). Real carbon ring is plotted separately.
+            
+            # Carbon ring (from carbon‑wall model)
+            for (x_lat, y_lat), is_defect in zip(model.carbon_positions_lattice,
+                                                 model.carbon_defect_mask):
+                # Carbon positions are already in lattice units
+                # Optionally, skip if outside visualization radius (should not happen)
+                dist = np.sqrt(x_lat**2 + y_lat**2)
+                if dist > max_vis_radius:
+                    continue
+                if is_defect:
+                    defect_x.append(x_lat)
+                    defect_y.append(y_lat)
+                else:
+                    carbon_x.append(x_lat)
+                    carbon_y.append(y_lat)
             
             # Plot sites with different markers/colors
             # Scale marker size based on lattice spacing
@@ -452,7 +514,7 @@ def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surfac
             param_text = (f"T = {model.T} K\n"
                           f"V = {model.voltage:.2f} V\n"
                           f"R = {model.pore_radius} Å\n"
-                          f"defects = {model.defect_probability:.3f} ({model.defect_placement})\n"
+                          f"defects = {model.defect_probability:.3f}\n"
                           f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
                           f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
                           f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
