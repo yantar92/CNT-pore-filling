@@ -18,10 +18,10 @@ class HardCarbonPoreModel:
             defect_probability=0.058,
             # Interaction Energies (eV)
             energy_na_na=-0.35,
-            energy_na_c=0.03,
-            energy_na_defect=-0.46,
+            energy_na_c=-0.32,
+            energy_na_defect=-1.77,
             temperature_k=298.0,
-            chemical_potential_ev=0.001):  # mu relative to bulk Na
+            voltage=1.0):  # voltage relative to bulk Na
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
         """
@@ -47,7 +47,9 @@ class HardCarbonPoreModel:
         self.kB = 8.617333262e-5 
         self.T = temperature_k
         self.beta = 1.0 / (self.kB * self.T)
-        self.mu = chemical_potential_ev
+        self.voltage = voltage
+        # We assume 3D, that's why 3
+        self.mu = -voltage + 3 * energy_na_na
 
         # 4. State Grid Constants
         self.EMPTY = 0
@@ -73,7 +75,7 @@ class HardCarbonPoreModel:
 
         print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
         print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
-        print(f"  Chem Pot: {self.mu} eV")
+        print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
         print(f"  Valid Sites: {len(self.valid_sites)}")
         print(f"  Surface Sites: {len(self.surface_sites)}")
         print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
@@ -271,33 +273,21 @@ class HardCarbonPoreModel:
 
 # --- Simulation & Visualization Wrapper ---
 
-def run_simulation(potential=None, steps=None, temp=None):
+def run_simulation(voltage=None, steps=None, temp=None):
     # Simulation Parameters
     MC_STEPS = 20000 if steps is None else steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
 
     # Initialize Model
-    # Using weaker energies than original snippet to ensure dynamics at RT
-    # gradual filling
-    # 15A, 298K, -0.4V, 0.058 defects, -0.25 na-na, 0.03 na-c, -0.46 na-def
-    # full filling when temperature is hight enough to allow fast diffusion
-    # 15A, 800K, -0.4V, 0.058 defects, -0.25 na-na, 0.03 na-c, -0.46 na-def
-    # 15A, 298K, -0.27V, 0 defects, ...: barely enough to get walls filled
-    # same but -0.28V - no filling
-    # same threshold for 10A
-    # 5A ~-0.24V (mostly because all sites near walls have 3 carbon neighbors)
     model = HardCarbonPoreModel(
-        pore_radius_angstrom=15,
+        pore_radius_angstrom=20.0,
         temperature_k=298 if temp is None else temp,
-        chemical_potential_ev=-0.4 if potential is None else potential,
+        voltage=1.0 if voltage is None else voltage,
         defect_probability=0.058,
         # defect_probability=0,
         energy_na_na=-0.35,
-        # energy_na_na=-0.25,
-        energy_na_c=0.03,
-        # Make filling boundary instantly
-        # energy_na_c=-0.03,
-        energy_na_defect=-0.46,
+        energy_na_c=-0.32,
+        energy_na_defect=-1.77,
     )
 
     total_sites = len(model.valid_sites)
