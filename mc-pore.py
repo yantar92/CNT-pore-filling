@@ -24,7 +24,10 @@ class HardCarbonPoreModel:
             energy_na_c=-0.32,
             energy_na_defect=-1.77,
             temperature_k=298.0,
-            voltage=1.0):  # voltage relative to bulk Na
+            voltage=1.0,  # voltage relative to bulk Na
+            eq_window=10000,
+            eq_slope_threshold=1e-5,
+            eq_min_mcs=10000):
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
 
@@ -82,6 +85,12 @@ class HardCarbonPoreModel:
         self.steps = 0
         self.time_points = [0]
         self.filling_history = [0]
+
+        # 8. Equilibrium detection
+        self.equilibrium_reached = False
+        self.eq_window = eq_window  # number of samples for equilibrium check
+        self.eq_slope_threshold = eq_slope_threshold  # slope per MCS threshold
+        self.eq_min_mcs = eq_min_mcs  # minimum MCS before checking
 
         print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
         print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
@@ -332,6 +341,24 @@ class HardCarbonPoreModel:
         if self.steps % (len(self.valid_sites) // 2) == 0:
             self.time_points.append(self.mcs)
             self.filling_history.append(self.get_filling_fraction())
+        if self.steps % (len(self.valid_sites) * 10) == 0:
+            self._check_equilibrium()
+
+    def _check_equilibrium(self):
+        """Check if filling fraction has stabilized."""
+        if self.equilibrium_reached:
+            return True
+        if self.mcs < self.eq_min_mcs:
+            return False
+        if len(self.filling_history) < self.eq_window:
+            return False
+        y = np.array(self.filling_history[-self.eq_window:])
+        x = np.array(self.time_points[-self.eq_window:])
+        A = np.vstack([x, np.ones(len(x))]).T
+        slope, intercept = np.linalg.lstsq(A, y, rcond=None)[0]
+        if abs(slope) < self.eq_slope_threshold:
+            self.equilibrium_reached = True
+        return self.equilibrium_reached
 
     def get_triangular_coordinates(self, r, c):
         """Convert grid indices to triangular lattice Cartesian coordinates."""
@@ -505,6 +532,18 @@ def run_simulation(
     for attempt in range(total_attempts):
         # Use default p_gcmc calculated by the model
         model.run_step()
+
+        # Check for equilibrium
+        if model.equilibrium_reached:
+            print(f"Equilibrium reached at MCS {model.mcs:.2f}")
+            if visualize:
+                print(f"  Final filling = {model.filling_history[-1]:.2%}")
+                visualize_model(model, ax_grid, ax_stats)
+                plt.draw()
+                plt.pause(0.01)
+            if snapshot_file is not None:
+                snapshots.append(model.take_snapshot())
+            break
 
         # Snapshots
         if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0\
