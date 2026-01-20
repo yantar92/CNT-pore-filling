@@ -108,10 +108,8 @@ class HardCarbonPoreModel:
                 dx = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
                 dy = sqrt3_half * (r - center_r)
                 dist = np.sqrt(dx**2 + dy**2)
-                # Extra threshold to avoid Na too close to carbon wall
-                # 2.7A is Na-C bond length for Na adsorption on graphene
-                threshold_lattice_units = 2.7/self.bond_length
-                if dist + threshold_lattice_units/2 >= self.radius_lattice_units:
+                # Offset to avoid Na close to C
+                if dist >= self.radius_lattice_units - 0.35:
                     self.grid[r, c] = self.CARBON
 
         # --- 2. Generate carbon ring (realistic spacing, defects) ---
