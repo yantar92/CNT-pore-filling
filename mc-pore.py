@@ -433,20 +433,19 @@ def run_simulation(voltage=0.1, steps=None, temp=298, radius=10.0):
             carbon_x, carbon_y = [], []
             defect_x, defect_y = [], []
             
-
             # We'll visualize all sites within 1.5 times pore radius to see some walls
             max_vis_radius = model.radius_lattice_units * 1.5
-
+            
             # Na lattice sites (empty / occupied)
             for r in range(model.grid_width):
                 for c in range(model.grid_width):
                     x, y = model.get_triangular_coordinates(r, c)
                     dist = np.sqrt(x**2 + y**2)
-
+                    
                     # Only plot sites within visualization radius
                     if dist > max_vis_radius:
                         continue
-
+                    
                     site_type = model.grid[r, c]
                     if site_type == model.EMPTY:
                         empty_x.append(x)
@@ -454,11 +453,17 @@ def run_simulation(voltage=0.1, steps=None, temp=298, radius=10.0):
                     elif site_type == model.NA:
                         na_x.append(x)
                         na_y.append(y)
+                    # CARBON and DEFECT grid cells are not plotted (they are only
+                    # coarse wall markers). Real carbon ring is plotted separately.
             
             # Carbon ring (from carbon‑wall model)
             for (x_lat, y_lat), is_defect in zip(model.carbon_positions_lattice,
                                                  model.carbon_defect_mask):
                 # Carbon positions are already in lattice units
+                # Optionally, skip if outside visualization radius (should not happen)
+                dist = np.sqrt(x_lat**2 + y_lat**2)
+                if dist > max_vis_radius:
+                    continue
                 if is_defect:
                     defect_x.append(x_lat)
                     defect_y.append(y_lat)
