@@ -76,6 +76,11 @@ class HardCarbonPoreModel:
         else:
             self.default_p_gcmc = 0.0
 
+        # 7. History
+        self.steps = 0
+        self.time_points = [0]
+        self.filling_history = [0]
+
         print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
         print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
         print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
@@ -298,6 +303,12 @@ class HardCarbonPoreModel:
         filled = np.sum(self.grid == self.NA)
         return filled / total_valid
 
+    @property
+    def mcs(self) -> float:
+        """Number of normalized MC steps.
+        """
+        return self.steps / len(self.valid_sites)
+
     def run_step(self, p_gcmc=None):
         """
         Executes one Monte Carlo Step (MCS).
@@ -314,17 +325,127 @@ class HardCarbonPoreModel:
         else:
             self.attempt_diffusion()
 
+        self.steps += 1
+        # Record stats every 0.5 MCS (approx)
+        if self.steps % (len(self.valid_sites) // 2) == 0:
+            self.time_points.append(self.mcs)
+            self.filling_history.append(self.get_filling_fraction())
+
     def get_triangular_coordinates(self, r, c):
         """Convert grid indices to triangular lattice Cartesian coordinates."""
         center_r = self.grid_width // 2
         center_c = self.grid_width // 2
         sqrt3_half = np.sqrt(3) / 2.0
-        
         x = (c - center_c) + 0.5 * ((r % 2) - (center_r % 2))
         y = sqrt3_half * (r - center_r)
         return x, y
 
 # --- Simulation & Visualization Wrapper ---
+
+
+def visualize(model, ax_grid, ax_stats):
+    """Visualize MODEL interactively.
+    AX_GRID is axis to be used to plot the pore.
+    AX_STATS is pore filling stats axis.
+    """
+    # Update Grid Plot with triangular lattice visualization
+    ax_grid.clear()
+
+    # Collect coordinates and colors for different site types
+    empty_x, empty_y = [], []
+    na_x, na_y = [], []
+    carbon_x, carbon_y = [], []
+    defect_x, defect_y = [], []
+
+    # We'll visualize all sites within 1.5 times pore radius to see some walls
+    max_vis_radius = model.radius_lattice_units * 1.5
+
+    for r in range(model.grid_width):
+        for c in range(model.grid_width):
+            x, y = model.get_triangular_coordinates(r, c)
+            dist = np.sqrt(x**2 + y**2)
+
+            # Only plot sites within visualization radius
+            if dist > max_vis_radius:
+                continue
+
+            site_type = model.grid[r, c]
+            if site_type == model.EMPTY:
+                empty_x.append(x)
+                empty_y.append(y)
+            elif site_type == model.NA:
+                na_x.append(x)
+                na_y.append(y)
+            elif site_type == model.CARBON:
+                carbon_x.append(x)
+                carbon_y.append(y)
+            elif site_type == model.DEFECT:
+                defect_x.append(x)
+                defect_y.append(y)
+
+    # Plot sites with different markers/colors
+    # Scale marker size based on lattice spacing
+    marker_scale = 100.0 / (model.grid_width / 8)  # Adjust scaling
+
+    if empty_x:
+        ax_grid.scatter(
+            empty_x, empty_y, s=marker_scale, c='lightblue',
+            edgecolors='gray', linewidths=0.5, alpha=0.7,
+            label='Empty')
+    if na_x:
+        ax_grid.scatter(
+            na_x, na_y, s=marker_scale, c='red', edgecolors='darkred',
+            linewidths=0.5, alpha=0.9, label='Na')
+    if carbon_x:
+        ax_grid.scatter(
+            carbon_x, carbon_y, s=marker_scale, c='black',
+            edgecolors='gray', linewidths=0.5, alpha=0.5,
+            label='Carbon')
+    if defect_x:
+        ax_grid.scatter(
+            defect_x, defect_y, s=marker_scale, c='orange',
+            edgecolors='darkorange', linewidths=0.5, alpha=0.8,
+            label='Defect')
+
+    # Draw pore boundary circle
+    theta = np.linspace(0, 2*np.pi, 100)
+    circle_x = model.radius_lattice_units * np.cos(theta)
+    circle_y = model.radius_lattice_units * np.sin(theta)
+    ax_grid.plot(circle_x, circle_y, 'k--', linewidth=1, alpha=0.7, label='Pore Boundary')
+
+    # Set equal aspect ratio and limits
+    ax_grid.set_aspect('equal')
+    ax_grid.set_xlim(-max_vis_radius, max_vis_radius)
+    ax_grid.set_ylim(-max_vis_radius, max_vis_radius)
+    current_mcs = 'N/A' if model.mcs is None else model.mcs
+    ax_grid.set_title(f"Pore State (MCS: {int(current_mcs)})")
+    ax_grid.legend(loc='upper right', fontsize='small')
+    # ax_grid.grid(True, alpha=0.3)
+    ax_grid.grid(False)
+
+    # Update Stats Plot
+    ax_stats.clear()
+    ax_stats.plot(model.time_points, model.filling_history, label='Filling Fraction')
+    ax_stats.set_ylim(0, 1.0)
+    ax_stats.set_xlabel('Monte Carlo Steps')
+    ax_stats.set_ylabel('Filling %')
+    ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f})")
+    ax_stats.grid(True)
+
+    # Add simulation parameters as text
+    param_text = (
+        f"T = {model.T} K\n"
+        f"V = {model.voltage:.2f} V\n"
+        f"R = {model.pore_radius} Å\n"
+        f"defects = {model.defect_probability:.3f} ({model.defect_placement})\n"
+        f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
+        f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
+        f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
+    ax_stats.text(0.02, 0.98, param_text, transform=ax_stats.transAxes,
+                  fontsize=8, verticalalignment='top',
+                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+
 
 def run_simulation(voltage=0.1, steps=20000, temp=298, radius=10.0, defect_placement='surface'):
     # Simulation Parameters
@@ -351,10 +472,6 @@ def run_simulation(voltage=0.1, steps=20000, temp=298, radius=10.0, defect_place
     total_sites = len(model.valid_sites)
     total_attempts = MC_STEPS * total_sites
 
-    # Tracking
-    filling_history = []
-    time_points = []
-
     print(f"Starting Simulation: {total_attempts} attempts ({MC_STEPS} MCS)...")
     start_time = time.time()
 
@@ -366,104 +483,12 @@ def run_simulation(voltage=0.1, steps=20000, temp=298, radius=10.0, defect_place
         # Use default p_gcmc calculated by the model
         model.run_step()
 
-        # Record stats every 0.5 MCS (approx)
-        if attempt % (total_sites // 2) == 0:
-            filling_history.append(model.get_filling_fraction())
-            time_points.append(attempt / total_sites)
-
         # Snapshots
-        current_mcs = attempt / total_sites
-        if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0 or attempt == total_attempts - 1:
-            print(f"  Step {int(current_mcs)}/{MC_STEPS}: Filling = {filling_history[-1]:.2%}")
-
-            # Update Grid Plot with triangular lattice visualization
-            ax_grid.clear()
-            
-            # Collect coordinates and colors for different site types
-            empty_x, empty_y = [], []
-            na_x, na_y = [], []
-            carbon_x, carbon_y = [], []
-            defect_x, defect_y = [], []
-            
-            # We'll visualize all sites within 1.5 times pore radius to see some walls
-            max_vis_radius = model.radius_lattice_units * 1.5
-            
-            for r in range(model.grid_width):
-                for c in range(model.grid_width):
-                    x, y = model.get_triangular_coordinates(r, c)
-                    dist = np.sqrt(x**2 + y**2)
-                    
-                    # Only plot sites within visualization radius
-                    if dist > max_vis_radius:
-                        continue
-                    
-                    site_type = model.grid[r, c]
-                    if site_type == model.EMPTY:
-                        empty_x.append(x)
-                        empty_y.append(y)
-                    elif site_type == model.NA:
-                        na_x.append(x)
-                        na_y.append(y)
-                    elif site_type == model.CARBON:
-                        carbon_x.append(x)
-                        carbon_y.append(y)
-                    elif site_type == model.DEFECT:
-                        defect_x.append(x)
-                        defect_y.append(y)
-            
-            # Plot sites with different markers/colors
-            # Scale marker size based on lattice spacing
-            marker_scale = 100.0 / (model.grid_width / 8)  # Adjust scaling
-            
-            if empty_x:
-                ax_grid.scatter(empty_x, empty_y, s=marker_scale, c='lightblue', 
-                               edgecolors='gray', linewidths=0.5, alpha=0.7, label='Empty')
-            if na_x:
-                ax_grid.scatter(na_x, na_y, s=marker_scale, c='red', 
-                               edgecolors='darkred', linewidths=0.5, alpha=0.9, label='Na')
-            if carbon_x:
-                ax_grid.scatter(carbon_x, carbon_y, s=marker_scale, c='black', 
-                               edgecolors='gray', linewidths=0.5, alpha=0.5, label='Carbon')
-            if defect_x:
-                ax_grid.scatter(defect_x, defect_y, s=marker_scale, c='orange', 
-                               edgecolors='darkorange', linewidths=0.5, alpha=0.8, label='Defect')
-            
-            # Draw pore boundary circle
-            theta = np.linspace(0, 2*np.pi, 100)
-            circle_x = model.radius_lattice_units * np.cos(theta)
-            circle_y = model.radius_lattice_units * np.sin(theta)
-            ax_grid.plot(circle_x, circle_y, 'k--', linewidth=1, alpha=0.7, label='Pore Boundary')
-            
-            # Set equal aspect ratio and limits
-            ax_grid.set_aspect('equal')
-            ax_grid.set_xlim(-max_vis_radius, max_vis_radius)
-            ax_grid.set_ylim(-max_vis_radius, max_vis_radius)
-            ax_grid.set_title(f"Pore State (MCS: {int(current_mcs)})")
-            ax_grid.legend(loc='upper right', fontsize='small')
-            # ax_grid.grid(True, alpha=0.3)
-            ax_grid.grid(False)
-
-            # Update Stats Plot
-            ax_stats.clear()
-            ax_stats.plot(time_points, filling_history, label='Filling Fraction')
-            ax_stats.set_ylim(0, 1.0)
-            ax_stats.set_xlabel('Monte Carlo Steps')
-            ax_stats.set_ylabel('Filling %')
-            ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f})")
-            ax_stats.grid(True)
-            
-            # Add simulation parameters as text
-            param_text = (f"T = {model.T} K\n"
-                          f"V = {model.voltage:.2f} V\n"
-                          f"R = {model.pore_radius} Å\n"
-                          f"defects = {model.defect_probability:.3f} ({model.defect_placement})\n"
-                          f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
-                          f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
-                          f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
-            ax_stats.text(0.02, 0.98, param_text, transform=ax_stats.transAxes,
-                         fontsize=8, verticalalignment='top',
-                         bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-
+        if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0\
+           or attempt == total_attempts - 1:
+            print(f"  Step {int(model.mcs)}/{MC_STEPS}:"
+                  f" Filling = {model.filling_history[-1]:.2%}")
+            visualize(model, ax_grid, ax_stats)
             plt.draw()
             plt.pause(0.01)
 
