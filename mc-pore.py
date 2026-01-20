@@ -326,17 +326,21 @@ class HardCarbonPoreModel:
 
 # --- Simulation & Visualization Wrapper ---
 
-def run_simulation(voltage=None, steps=None, temp=None, defect_placement='surface'):
+def run_simulation(voltage=0.1, steps=20000, temp=298, radius=10.0, defect_placement='surface'):
     # Simulation Parameters
-    MC_STEPS = 20000 if steps is None else steps  # Total normalized steps (attempts per site)
+    MC_STEPS = steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
 
     # Initialize Model
     model = HardCarbonPoreModel(
-        pore_radius_angstrom=20.0,
-        temperature_k=298 if temp is None else temp,
-        voltage=1.0 if voltage is None else voltage,
-        defect_probability=0.058,
+        pore_radius_angstrom=radius,
+        temperature_k=temp,
+        voltage=voltage,
+        # defect_probability=0.058,
+        # Defect density should be scaled by unknown factor to get 3d->2d mapping
+        # The carbons are placed on Na lattice, so the number of C is different
+        # here and thus need to adjust concentration.
+        defect_probability=0.058 * 3,
         defect_placement=defect_placement,
         # defect_probability=0,
         energy_na_na=-0.35,
