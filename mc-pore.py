@@ -349,7 +349,7 @@ class HardCarbonPoreModel:
 # --- Simulation & Visualization Wrapper ---
 
 
-def visualize(model, ax_grid, ax_stats):
+def visualize_model(model, ax_grid, ax_stats):
     """Visualize MODEL interactively.
     AX_GRID is axis to be used to plot the pore.
     AX_STATS is pore filling stats axis.
@@ -456,6 +456,7 @@ def visualize(model, ax_grid, ax_stats):
 def run_simulation(
         voltage=0.1, steps=20000, temp=298, radius=10.0,
         defect_placement='surface',
+        visualize=True,
         snapshot_file='snapshots.pkl'):
     """
     Run a Monte Carlo simulation of pore filling.
@@ -497,8 +498,9 @@ def run_simulation(
     start_time = time.time()
 
     # Visualization Setup
-    fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
-    plt.show(block=False)
+    if visualize:
+        fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
+        plt.show(block=False)
 
     for attempt in range(total_attempts):
         # Use default p_gcmc calculated by the model
@@ -507,11 +509,12 @@ def run_simulation(
         # Snapshots
         if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0\
            or attempt == total_attempts - 1:
-            print(f"  Step {int(model.mcs)}/{MC_STEPS}:"
-                  f" Filling = {model.filling_history[-1]:.2%}")
-            visualize(model, ax_grid, ax_stats)
-            plt.draw()
-            plt.pause(0.01)
+            if visualize:
+                print(f"  Step {int(model.mcs)}/{MC_STEPS}:"
+                      f" Filling = {model.filling_history[-1]:.2%}")
+                visualize_model(model, ax_grid, ax_stats)
+                plt.draw()
+                plt.pause(0.01)
             if snapshot_file is not None:
                 snapshots.append(model.take_snapshot())
 
@@ -520,8 +523,9 @@ def run_simulation(
         with open(snapshot_file, 'wb') as f:
             pickle.dump(snapshots, f)
         print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
-    plt.show()
-    plt.savefig('summary.svg')
+    if visualize:
+        plt.show()
+        plt.savefig('summary.svg')
     
 
 def replay_simulation(snapshot_file, interval=0.01, every=1):
@@ -541,7 +545,7 @@ def replay_simulation(snapshot_file, interval=0.01, every=1):
     for i, model in enumerate(snapshots):
         if i % every != 0:
             continue
-        visualize(model, ax_grid, ax_stats)
+        visualize_model(model, ax_grid, ax_stats)
         ax_grid.set_title(f"Pore State (MCS: {int(model.mcs)}) - Snapshot {i+1}/{len(snapshots)}")
         ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f}) - Snapshot {i+1}/{len(snapshots)}")
         plt.draw()
