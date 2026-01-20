@@ -600,4 +600,9 @@ def replay_simulation(snapshot_file, interval=0.01, every=1):
 # replay_simulation('snapshots.pkl')
 
 if __name__ == "__main__":
-    run_simulation()
+    # run_simulation()
+    for radius in np.arange(5, 20, 1):
+        for voltage in [0, 0.02, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.20, 0.3, 0.5, 1.0, 2.0, 4.0]:
+            run_simulation (
+                radius=radius, voltage=voltage, visualize=False, steps=1000000,
+                snapshot_file=f"v2.snapshots.r.{radius}.V.{voltage}.pkl")
