@@ -6,6 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 import time
+import pickle
+import copy
 
 class HardCarbonPoreModel:
     def __init__(
@@ -340,6 +342,10 @@ class HardCarbonPoreModel:
         y = sqrt3_half * (r - center_r)
         return x, y
 
+    def take_snapshot(self):
+        """Return a deep copy of the current model state."""
+        return copy.deepcopy(self)
+
 # --- Simulation & Visualization Wrapper ---
 
 
@@ -447,7 +453,21 @@ def visualize(model, ax_grid, ax_stats):
 
 
 
-def run_simulation(voltage=0.1, steps=20000, temp=298, radius=10.0, defect_placement='surface'):
+def run_simulation(
+        voltage=0.1, steps=20000, temp=298, radius=10.0,
+        defect_placement='surface',
+        snapshot_file='snapshots.pkl'):
+    """
+    Run a Monte Carlo simulation of pore filling.
+    
+    Args:
+        voltage: Voltage relative to bulk Na (V)
+        steps: Number of normalized Monte Carlo steps (MCS)
+        temp: Temperature (K)
+        radius: Pore radius (Å)
+        defect_placement: 'surface' or 'random'
+        snapshot_file: If provided, save snapshots to this pickle file.
+    """
     # Simulation Parameters
     MC_STEPS = steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
@@ -468,6 +488,7 @@ def run_simulation(voltage=0.1, steps=20000, temp=298, radius=10.0, defect_place
         energy_na_c=-0.32,
         energy_na_defect=-1.77,
     )
+    snapshots = []
 
     total_sites = len(model.valid_sites)
     total_attempts = MC_STEPS * total_sites
@@ -491,9 +512,47 @@ def run_simulation(voltage=0.1, steps=20000, temp=298, radius=10.0, defect_place
             visualize(model, ax_grid, ax_stats)
             plt.draw()
             plt.pause(0.01)
+            if snapshot_file is not None:
+                snapshots.append(model.take_snapshot())
 
     print(f"Simulation Complete in {time.time() - start_time:.2f}s")
+    if snapshot_file is not None:
+        with open(snapshot_file, 'wb') as f:
+            pickle.dump(snapshots, f)
+        print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
     plt.show()
+    plt.savefig('summary.svg')
+    
+
+def replay_simulation(snapshot_file, interval=0.01, every=1):
+    """
+    Load snapshots from SNAPSHOT_FILE and visualize them sequentially.
+    INTERVAL is pause time between frames in seconds.
+    EVERY X will only show every X's snapshot.
+    """
+    with open(snapshot_file, 'rb') as f:
+        snapshots = pickle.load(f)
+    
+    print(f"Loaded {len(snapshots)} snapshots")
+    
+    fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
+    plt.show(block=False)
+    
+    for i, model in enumerate(snapshots):
+        if i % every != 0:
+            continue
+        visualize(model, ax_grid, ax_stats)
+        ax_grid.set_title(f"Pore State (MCS: {int(model.mcs)}) - Snapshot {i+1}/{len(snapshots)}")
+        ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f}) - Snapshot {i+1}/{len(snapshots)}")
+        plt.draw()
+        plt.pause(interval)
+    
+    plt.show()
+
+
+# Example usage:
+# run_simulation(snapshot_file='snapshots.pkl')
+# replay_simulation('snapshots.pkl')
 
 if __name__ == "__main__":
     run_simulation()
