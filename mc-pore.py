@@ -483,6 +483,7 @@ def visualize_model(model, ax_grid, ax_stats):
 def run_simulation(
         voltage=0.1, steps=20000, temp=298, radius=10.0,
         defect_placement='surface',
+        defect_probability=0.058 * 3,
         visualize=True,
         snapshot_file='snapshots.pkl'):
     """
@@ -509,7 +510,8 @@ def run_simulation(
         # Defect density should be scaled by unknown factor to get 3d->2d mapping
         # The carbons are placed on Na lattice, so the number of C is different
         # here and thus need to adjust concentration.
-        defect_probability=0.058 * 3,
+        # defect_probability=0.058 * 3,
+        defect_probability=defect_probability,
         defect_placement=defect_placement,
         # defect_probability=0,
         energy_na_na=-0.35,
