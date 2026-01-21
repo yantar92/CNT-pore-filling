@@ -1,5 +1,11 @@
 """
 Metropolis Monte Carlo Simulation for Hard Carbon Pore Filling.
+
+Command line usage:
+    python mc-pore.py [--voltage 0.1] [--radius 10.0] [--file snapshots.pkl]
+        [--steps 20000] [--visualize] [--energy_na_defect -1.77]
+        [--temp 298] [--defect_placement surface] [--defect_probability 0.174]
+        [--scan]
 """
 
 import numpy as np
@@ -8,6 +14,8 @@ import random
 import time
 import pickle
 import copy
+import argparse
+import sys
 
 class HardCarbonPoreModel:
     def __init__(
@@ -485,7 +493,10 @@ def run_simulation(
         defect_placement='surface',
         defect_probability=0.058 * 3,
         visualize=True,
-        snapshot_file='snapshots.pkl'):
+        snapshot_file='snapshots.pkl',
+        energy_na_na=-0.35,
+        energy_na_c=-0.32,
+        energy_na_defect=-1.77):
     """
     Run a Monte Carlo simulation of pore filling.
     
@@ -496,6 +507,9 @@ def run_simulation(
         radius: Pore radius (Å)
         defect_placement: 'surface' or 'random'
         snapshot_file: If provided, save snapshots to this pickle file.
+        energy_na_na: Na-Na interaction energy (eV)
+        energy_na_c: Na-C interaction energy (eV)
+        energy_na_defect: Na-defect interaction energy (eV)
     """
     # Simulation Parameters
     MC_STEPS = steps  # Total normalized steps (attempts per site)
@@ -513,10 +527,9 @@ def run_simulation(
         # defect_probability=0.058 * 3,
         defect_probability=defect_probability,
         defect_placement=defect_placement,
-        # defect_probability=0,
-        energy_na_na=-0.35,
-        energy_na_c=-0.32,
-        energy_na_defect=-1.77,
+        energy_na_na=energy_na_na,
+        energy_na_c=energy_na_c,
+        energy_na_defect=energy_na_defect,
     )
     snapshots = []
 
@@ -669,10 +682,49 @@ def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
 # replay_simulation('snapshots.pkl')
 # summarize_snapshots("v2.snapshots.*.pkl", "summary.csv")
 
+def main():
+    parser = argparse.ArgumentParser(
+        description='Metropolis Monte Carlo simulation of pore filling in hard carbon.'
+    )
+    parser.add_argument('--voltage', type=float, default=0.1,
+                        help='Voltage relative to bulk Na (V)')
+    parser.add_argument('--radius', type=float, default=10.0,
+                        help='Pore radius (Å)')
+    parser.add_argument('--file', type=str, default='snapshots.pkl',
+                        help='Output snapshot pickle file')
+    parser.add_argument('--steps', type=int, default=20000,
+                        help='Number of normalized Monte Carlo steps (MCS)')
+    parser.add_argument('--visualize', action='store_true',
+                        help='Enable live visualization')
+    parser.add_argument('--energy_na_defect', type=float, default=-1.77,
+                        help='Na-defect interaction energy (eV)')
+    parser.add_argument('--energy_na_na', type=float, default=-0.35,
+                        help='Na-Na interaction energy (eV)')
+    parser.add_argument('--energy_na_c', type=float, default=-0.32,
+                        help='Na-C interaction energy (eV)')
+    parser.add_argument('--temp', type=float, default=298.0,
+                        help='Temperature (K)')
+    parser.add_argument('--defect_placement', type=str, default='surface',
+                        choices=['surface', 'random'],
+                        help='Defect placement mode')
+    parser.add_argument('--defect_probability', type=float, default=0.058*3,
+                        help='Defect probability (fraction)')
+    
+    args = parser.parse_args()
+    
+    # Single simulation with provided parameters
+    run_simulation(
+        voltage=args.voltage,
+        steps=args.steps,
+        temp=args.temp,
+        radius=args.radius,
+        defect_placement=args.defect_placement,
+        defect_probability=args.defect_probability,
+        visualize=args.visualize,
+        snapshot_file=args.file,
+        energy_na_na=args.energy_na_na,
+        energy_na_c=args.energy_na_c,
+        energy_na_defect=args.energy_na_defect)
+
 if __name__ == "__main__":
-    # run_simulation()
-    for radius in np.arange(5, 20, 1):
-        for voltage in [0, 0.02, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.20, 0.3, 0.5, 1.0, 2.0, 4.0]:
-            run_simulation (
-                radius=radius, voltage=voltage, visualize=False, steps=1000000,
-                snapshot_file=f"v2.snapshots.r.{radius}.V.{voltage}.pkl")
+    main()
