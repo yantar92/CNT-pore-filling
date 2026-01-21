@@ -692,7 +692,7 @@ def main():
                         help='Pore radius (Å)')
     parser.add_argument('--file', type=str, default='snapshots.pkl',
                         help='Output snapshot pickle file')
-    parser.add_argument('--steps', type=int, default=20000,
+    parser.add_argument('--steps', type=int, default=1000000,
                         help='Number of normalized Monte Carlo steps (MCS)')
     parser.add_argument('--visualize', action='store_true',
                         help='Enable live visualization')
