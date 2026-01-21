@@ -5,7 +5,7 @@ Command line usage:
     python mc-pore.py [--voltage 0.1] [--radius 10.0] [--file snapshots.pkl]
         [--steps 20000] [--visualize] [--energy_na_defect -1.77]
         [--temp 298] [--defect_placement surface] [--defect_probability 0.174]
-        [--scan]
+        [--csv] [--quiet] [--seed INT]
 """
 
 import numpy as np
@@ -35,7 +35,8 @@ class HardCarbonPoreModel:
             voltage=1.0,  # voltage relative to bulk Na
             eq_window=10000,
             eq_slope_threshold=1e-5,
-            eq_min_mcs=10000):
+            eq_min_mcs=10000,
+            quiet=False):
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
 
@@ -99,18 +100,20 @@ class HardCarbonPoreModel:
         self.eq_window = eq_window  # number of samples for equilibrium check
         self.eq_slope_threshold = eq_slope_threshold  # slope per MCS threshold
         self.eq_min_mcs = eq_min_mcs  # minimum MCS before checking
+        self.quiet = quiet
 
-        print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
-        print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
-        print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
-        print(f"  Valid Sites: {len(self.valid_sites)}")
-        print(f"  Surface Sites: {len(self.surface_sites)}")
-        print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
-        n_defects = 0
-        for r, c in self.adjacent_wall_sites:
-            n_defects += 1 if self.grid[r, c] == self.DEFECT else 0
-        print(f"  Surface Carbons: {len(self.surface_sites)} ({n_defects} defects)")
-        print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
+        if not self.quiet:
+            print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
+            print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
+            print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
+            print(f"  Valid Sites: {len(self.valid_sites)}")
+            print(f"  Surface Sites: {len(self.surface_sites)}")
+            print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
+            n_defects = 0
+            for r, c in self.adjacent_wall_sites:
+                n_defects += 1 if self.grid[r, c] == self.DEFECT else 0
+            print(f"  Surface Carbons: {len(self.surface_sites)} ({n_defects} defects)")
+            print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
 
     @property
     def mu(self):
@@ -496,7 +499,10 @@ def run_simulation(
         snapshot_file='snapshots.pkl',
         energy_na_na=-0.35,
         energy_na_c=-0.32,
-        energy_na_defect=-1.77):
+        energy_na_defect=-1.77,
+        csv_output=False,
+        seed=None,
+        quiet=False):
     """
     Run a Monte Carlo simulation of pore filling.
     
@@ -510,8 +516,14 @@ def run_simulation(
         energy_na_na: Na-Na interaction energy (eV)
         energy_na_c: Na-C interaction energy (eV)
         energy_na_defect: Na-defect interaction energy (eV)
+        csv_output: If True, print a CSV line with results to stdout.
+        seed: Random seed for reproducibility (None for random).
+        quiet: Suppress progress output.
     """
-    # Simulation Parameters
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+    
     MC_STEPS = steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
 
@@ -530,13 +542,15 @@ def run_simulation(
         energy_na_na=energy_na_na,
         energy_na_c=energy_na_c,
         energy_na_defect=energy_na_defect,
+        quiet=quiet,
     )
     snapshots = []
 
     total_sites = len(model.valid_sites)
     total_attempts = MC_STEPS * total_sites
 
-    print(f"Starting Simulation: {total_attempts} attempts ({MC_STEPS} MCS)...")
+    if not quiet:
+        print(f"Starting Simulation: {total_attempts} attempts ({MC_STEPS} MCS)...")
     start_time = time.time()
 
     # Visualization Setup
@@ -545,13 +559,12 @@ def run_simulation(
         plt.show(block=False)
 
     for attempt in range(total_attempts):
-        # Use default p_gcmc calculated by the model
         model.run_step()
 
-        # Check for equilibrium
         if model.equilibrium_reached:
-            print(f"Equilibrium reached at MCS {model.mcs:.2f}")
-            if visualize:
+            if not quiet:
+                print(f"Equilibrium reached at MCS {model.mcs:.2f}")
+            if visualize and not quiet:
                 print(f"  Final filling = {model.filling_history[-1]:.2%}")
                 visualize_model(model, ax_grid, ax_stats)
                 plt.draw()
@@ -560,10 +573,9 @@ def run_simulation(
                 snapshots.append(model.take_snapshot())
             break
 
-        # Snapshots
         if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0\
            or attempt == total_attempts - 1:
-            if visualize:
+            if visualize and not quiet:
                 print(f"  Step {int(model.mcs)}/{MC_STEPS}:"
                       f" Filling = {model.filling_history[-1]:.2%}")
                 visualize_model(model, ax_grid, ax_stats)
@@ -572,15 +584,41 @@ def run_simulation(
             if snapshot_file is not None:
                 snapshots.append(model.take_snapshot())
 
-    print(f"Simulation Complete in {time.time() - start_time:.2f}s")
+    elapsed = time.time() - start_time
+    if not quiet:
+        print(f"Simulation Complete in {elapsed:.2f}s")
     if snapshot_file is not None:
         with open(snapshot_file, 'wb') as f:
             pickle.dump(snapshots, f)
-        print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
+        if not quiet:
+            print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
     if visualize:
         plt.show()
         plt.savefig('summary.svg')
     
+    # CSV output
+    if csv_output:
+        final_filling = model.filling_history[-1] if model.filling_history else 0.0
+        row = [
+            f"{voltage:.6f}",
+            f"{radius:.1f}",
+            f"{defect_probability:.6f}",
+            defect_placement,
+            f"{energy_na_defect:.6f}",
+            f"{energy_na_na:.6f}",
+            f"{energy_na_c:.6f}",
+            f"{temp:.1f}",
+            f"{steps}",
+            str(seed) if seed is not None else '',
+            f"{final_filling:.6f}",
+            str(model.equilibrium_reached),
+            f"{model.mcs:.2f}",
+            f"{len(model.valid_sites)}",
+            f"{len(model.surface_sites)}",
+            f"{model.default_p_gcmc:.6f}",
+            f"{model.mu:.6f}",
+        ]
+        print(','.join(row))
 
 def replay_simulation(snapshot_file, interval=0.01, every=1):
     """
@@ -709,10 +747,15 @@ def main():
                         help='Defect placement mode')
     parser.add_argument('--defect_probability', type=float, default=0.058*3,
                         help='Defect probability (fraction)')
+    parser.add_argument('--csv', action='store_true',
+                        help='Output a single CSV line with final results')
+    parser.add_argument('--quiet', action='store_true',
+                        help='Suppress all progress output')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='Random seed for reproducibility')
     
     args = parser.parse_args()
     
-    # Single simulation with provided parameters
     run_simulation(
         voltage=args.voltage,
         steps=args.steps,
@@ -724,7 +767,10 @@ def main():
         snapshot_file=args.file,
         energy_na_na=args.energy_na_na,
         energy_na_c=args.energy_na_c,
-        energy_na_defect=args.energy_na_defect)
+        energy_na_defect=args.energy_na_defect,
+        csv_output=args.csv,
+        quiet=args.quiet,
+        seed=args.seed)
 
 if __name__ == "__main__":
     main()
