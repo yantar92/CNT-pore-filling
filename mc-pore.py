@@ -595,9 +595,79 @@ def replay_simulation(snapshot_file, interval=0.01, every=1):
     plt.show()
 
 
+def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
+    """
+    Process all .pkl files matching PATTERN, extract final snapshot data,
+    and save summary to OUTPUT_CSV.
+    """
+    import glob
+    import pandas as pd
+    import traceback
+
+    files = glob.glob(pattern)
+    if not files:
+        print(f"No files matching pattern '{pattern}'")
+        return
+
+    print(f"Found {len(files)} files")
+
+    data_rows = []
+
+    for fpath in sorted(files):
+        try:
+            with open(fpath, 'rb') as f:
+                snapshots = pickle.load(f)
+
+            if not snapshots:
+                print(f"Warning: {fpath} contains no snapshots")
+                continue
+
+            # Take the last snapshot
+            model = snapshots[-1]
+
+            # Extract parameters
+            row = {
+                'filename': fpath,
+                'pore_radius_A': model.pore_radius,
+                'voltage_V': model.voltage,
+                'defect_probability': model.defect_probability,
+                'defect_placement': model.defect_placement,
+                'temperature_K': model.T,
+                'energy_na_na_eV': model.energies['Na_Na'],
+                'energy_na_c_eV': model.energies['Na_C'],
+                'energy_na_defect_eV': model.energies['Na_Defect'],
+                'final_filling': model.filling_history[-1] if model.filling_history else 0.0,
+                'final_mcs': model.mcs,
+                # 'equilibrium_reached': model.equilibrium_reached,
+                'n_snapshots': len(snapshots),
+                'n_valid_sites': len(model.valid_sites),
+                'n_surface_sites': len(model.surface_sites),
+                'default_p_gcmc': model.default_p_gcmc,
+                'mu_eV': model.mu,
+            }
+
+            data_rows.append(row)
+            print(f"Processed {fpath}: R={model.pore_radius:.1f}Å, V={model.voltage:.2f}V, filling={row['final_filling']:.3f}")
+            
+        except Exception as e:
+            print(f"Error processing {fpath}: {e}")
+            traceback.print_exc()
+            continue
+
+    if data_rows:
+        df = pd.DataFrame(data_rows)
+        df.to_csv(output_csv, index=False)
+        print(f"Saved summary to {output_csv} with {len(df)} rows")
+        return df
+    else:
+        print("No valid data extracted")
+        return None
+
+
 # Example usage:
 # run_simulation(snapshot_file='snapshots.pkl')
 # replay_simulation('snapshots.pkl')
+# summarize_snapshots("v2.snapshots.*.pkl", "summary.csv")
 
 if __name__ == "__main__":
     # run_simulation()
