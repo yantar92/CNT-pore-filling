@@ -239,14 +239,8 @@ The simulation implements a 2D triangular lattice of Na sites with a circular po
 **Equilibrium detection:** The simulation monitors the filling‑fraction slope over a moving window (default 10 000 samples). When the slope falls below `1×10⁻⁵` per MC step and at least 10 000 MC steps have been performed, the run is considered to have reached equilibrium and stops early.
 
 
-# Motivation and physical background
-
-    data
-
-
 # License and citation
 
 This software is provided under the MIT License. If you use this
-code in your research, please cite the underlying physics background
-and acknowledge the authors.
+code in your research, please acknowledge the authors.
 
