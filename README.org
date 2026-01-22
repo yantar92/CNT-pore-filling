@@ -1,3 +1,121 @@
+# -*- after-save-hook: (org-md-export-to-markdown); -*-
+#+options: toc:nil
+
+* Hard‑Carbon Pore‑Filling Monte Carlo Simulation – Software Documentation
+
+This package provides a Metropolis Monte Carlo (MC) simulator for
+studying sodium‑ion filling of nanopores in hard‑carbon anodes for
+sodium‑ion batteries. It implements a 2‑dimensional
+triangular‑lattice model with circular pores, Na‑Na and Na‑C
+interactions, and explicit carbon‑wall defects. The code is designed
+for high‑throughput parameter scanning (pore radius, voltage, defect
+density, defect‑adsorption energy) and includes tools for automated
+scan generation, parallel execution, and publication‑ready analysis.
+
+** Overview of scripts
+  | Script             | Purpose                                                                                                                                                                                                      |
+  |--------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+  | =mc‑pore.py=       | Core simulation engine. Runs a single MC simulation for a given parameter set.                                                                                                                               |
+  | =generate_scan.py= | Generates a command list for a full parameter scan (voltages, radii, defect probabilities, Na‑defect energies).                                                                                              |
+  | =run.sh=           | Example wrapper that calls =generate_scan.py= and executes the scan with GNU Parallel.                                                                                                                       |
+  | =analyze.py=       | Loads the aggregated results (=results.csv=), averages replicates, and produces a set of plots (filling fraction vs. radius, coloured by voltage) for each defect‑probability / Na‑defect‑energy combination. |
+
+** Installation & dependencies
+  The simulation requires Python 3 with =numpy=, =matplotlib=,
+  =pandas=, and =seaborn= (for plot styling). GNU Parallel is needed
+  for running the parameter scan in parallel.
+
+  #+begin_src bash
+    # Install Python dependencies
+    pip install numpy matplotlib pandas seaborn
+
+    # On a typical Linux system, install GNU Parallel via your package manager
+    # (e.g., on Gentoo: emerge sys‑process/parallel)
+  #+end_src
+
+All scripts are standalone and can be placed in the same directory.
+
+** Quick start: running a single simulation
+  #+begin_src bash
+  python mc‑pore.py --voltage 0.1 --radius 10.0 --defect_probability 0.174 \
+		    --energy_na_defect -1.77 --steps 1000000 --csv --quiet --seed 12345
+  #+end_src
+
+  This will output a single CSV line to stdout containing all simulation parameters and the final filling fraction. To see live visualisation, omit =--csv= and =--quiet= and add =--visualize=.
+
+** Parameter‑scan workflow
+  1. *Generate the command list* (adjust =--replicates= and =--steps= as needed):
+     #+begin_src bash
+     python generate_scan.py --replicates 15 --steps 1000000 --output commands.txt
+     #+end_src
+     The script prints an estimate of the total number of simulations and wall‑time.
+
+  2. *Run the scan with GNU Parallel* (here using 96 cores):
+     #+begin_src bash
+     cat commands.txt | parallel -j 96 --line‑buffer > results.csv
+     #+end_src
+     Each simulation outputs one CSV line; the =--line‑buffer= ensures lines are flushed immediately.
+
+  3. *After completion*, the file =results.csv= contains all simulation results, one row per run.
+
+** Output format (=results.csv=)
+  The CSV file has the following columns (in order):
+
+  | Column                | Description                                                                                        |
+  |-----------------------+----------------------------------------------------------------------------------------------------|
+  | =voltage=             | Applied voltage (V) relative to bulk Na.                                                           |
+  | =radius=              | Pore radius (Å).                                                                                   |
+  | =defect_probability=  | Atomic defect concentration (fraction of carbon sites that are defective).                         |
+  | =defect_placement=    | Always ="surface"= (defects placed only on pore‑surface carbon sites).                             |
+  | =energy_na_defect=    | Na‑defect bond energy (eV, vs. vacuum).                                                            |
+  | =energy_na_na=        | Na‑Na bond energy (eV).                                                                            |
+  | =energy_na_c=         | Na‑C bond energy (eV).                                                                             |
+  | =temperature=         | Temperature (K).                                                                                   |
+  | =steps=               | Total MC steps requested.                                                                          |
+  | =seed=                | Random seed used.                                                                                  |
+  | =final_filling=       | Filling fraction (0–1) at the end of the simulation.                                               |
+  | =equilibrium_reached= | Boolean (=True=/=False=) indicating whether the filling fraction stabilised before the step limit. |
+  | =mcs=                 | Actual MC steps executed (normalised by number of lattice sites).                                  |
+  | =n_valid_sites=       | Number of lattice sites inside the pore.                                                           |
+  | =n_surface_sites=     | Number of pore‑surface sites (where GCMC insertion/removal is allowed).                            |
+  | =default_p_gcmc=      | Default probability of attempting a GCMC move (surface‑sites / valid‑sites).                        |
+  | =mu=                  | Chemical potential (eV) derived from voltage and Na‑Na energy.                                     |
+
+** Analysis and visualisation
+  Run the analysis script to average replicates and generate publication‑style plots:
+
+  #+begin_src bash
+  python analyze.py results.csv --output‑dir ./plots
+  #+end_src
+
+  This will:
+  - Load =results.csv= and exclude any simulations that did not reach equilibrium.
+  - Group results by (=voltage=, =radius=, =defect_probability=, =energy_na_defect=) and compute mean ± standard deviation across replicates.
+  - Create one PNG plot per (=defect_probability=, =energy_na_defect=) combination, showing filling fraction vs. pore radius with separate lines (coloured by voltage). Each plot includes a colour‑bar for voltage and a text box listing constant simulation parameters.
+  - Save all plots to the specified output directory (default: current directory).
+
+  Command‑line options:
+  - =--output‑dir DIR= – directory for PNG files (created if missing).
+  - =--show‑plots= – display plots interactively (instead of only saving).
+  - =--quiet= – suppress progress messages.
+
+** Model description (summary)
+  The simulation implements a 2D triangular lattice of Na sites with a circular pore. Carbon‑wall sites occupy lattice positions outside the pore radius; a fraction of these wall sites are marked as defects (=DEFECT=) with a stronger Na‑adsorption energy. The remaining wall sites are ordinary carbon (=CARBON=). Sites inside the pore are either empty (=EMPTY=) or occupied by Na (=NA=).
+
+  *Monte Carlo moves:*
+  - *Diffusion*: a Na atom swaps with an adjacent empty site (Metropolis acceptance based on energy change).
+  - *Grand‑canonical Monte Carlo (GCMC)*: insertion or removal of a Na atom at a pore‑surface site (adjacent to a carbon/defect). Acceptance depends on the interaction energy of the new/adatom and the chemical potential =μ = –voltage + 3·E_Na‑Na=.
+
+  *Key energy parameters (default values from optB88‑vdW DFT):*
+  - =E_Na‑Na= = –0.35 eV/bond
+  - =E_Na‑C= = –0.32 eV/bond  
+  - =E_Na‑defect= = –1.77 eV/bond (vs. vacuum)
+
+  *Defect placement:* The =defect_probability= is interpreted as the atomic concentration of defective carbon atoms. Defects are placed exactly on the pore‑surface carbon sites (i.e., those adjacent to at least one empty pore site). This ensures defects are always accessible to Na.
+
+  *Equilibrium detection:* The simulation monitors the filling‑fraction slope over a moving window (default 10 000 samples). When the slope falls below =1×10⁻⁵= per MC step and at least 10 000 MC steps have been performed, the run is considered to have reached equilibrium and stops early.
+
+* Motivation and physical background
 #+begin_src emacs-lisp :noweb yes :var data=a4cf0588-3768-42f4-9716-a9578d2f8a1c[] :wrap
 data
 #+end_src
@@ -77,6 +195,25 @@ We will use a simplified MC model implemented in Python:
    pore boundary simply represented by carbons sitting in place of Na
    according to the pore shape and size.
    - we will compensate this assumption by scaling interaction energies
+   [2026-01-19 Mon] *Update*: not simulating carbon lattice leads to
+   defect concentrations being unphysical. I altered the model to
+   use a carbon ring (spaced according to C-C bond) around the pore
+   with carbons within Na-Na bond cutoff interacting with
+   carbons. Now, Na-C bonds are treated separately. The calculation
+   still gives 2-3 Na-C neighbors, which is as it should be.
+   [2026-01-20 Tue] *Update 2*: After sleeping with the new idea, I realized
+   that using C-C spacing in 2D also makes 0 sense geometrically.
+   More practical would be something like CNT perimeter. But then we
+   arrive to the same problem with unrealistic concentrations.
+   Looks like we cannot really get around concentrations being
+   incompatible as long as we stay in 2D. So, reverting to the old
+   behavior - it should scale similarly and also captures radius
+   effect by altering the number of Na-C bonds with curvature.
+   The scaling of the number bonds not exactly the same with what we
+   would get with more realistic carbon lattice, but that would still
+   not be accurate in 2d anyway. With simpler triangular shared
+   lattice, we also do not need to worry about relative position of Na
+   vs. carbon lattices - how close should Na be to the carbon?
 4. The pore shape will be circular. The pore radius will be a
    simulation constant that can be adjusted between the runs.
    The radius will determine which Na sites will be active. All Na
@@ -146,21 +283,110 @@ Visualizations:
 
 
 Bond energies:
+[2026-01-19 Mon] Remember that we need to have all the bond energies relative to
+vacuum. That's what MC expects by construction.
 
 Na-Na: -1.04eV/atom cohesive energy from optB88-vdW.
  Na-Na bond energy: -1.04/8 neighbors * 2 (shared) = -0.26eV/bond
  We need to scale to 2D: 8 -> 6: -1.04/6 * 2 = -0.35eV/bond
 
-Na-C: optB88-vdW from [[id:lin2025-unveiling-dominant-processes-721][Lin, Tateyama AEM 2025]] 0.09eV/Na atom
+Na-C: optB88-vdW from [[id:lin2025-unveiling-dominant-processes-721][Lin, Tateyama AEM 2025]] 0.09eV/Na atom (relative to Na metal)
+That is 0.09eV-1.04eV/Na atom vs vacuum = -0.95eV/Na atom
 This is for Na adsorption on flat graphene sheet, so should correspond
 to several Na-C bonds. Let's take half - 3 bonds (they will naturally
 scale with curvature incorporating its effects).
- Na-C: 0.09eV/3 = 0.03eV/Na-C bond
+ Na-C: -0.95eV/3 = -0.32eV/Na-C bond
 
-Na-defect: optB88-vdW from [[id:lin2025-unveiling-dominant-processes-721][Lin, Tateyama AEM 2025]] -1.37eV/atom for monovacancy
-  SW and divacancy will be closer to 0, but let's keep it.
-  take same 3 neighbors: -0.46eV/bond
-  *We may consider introducing multiple defect types later*
-  
+Na-defect: optB88-vdW from [[id:lin2025-unveiling-dominant-processes-721][Lin, Tateyama AEM 2025]] -1.37eV/atom for monovacancy (vs Na metal)
+It is -1.37eV-1.04eV/atom = -2.41eV/atom
+SW and divacancy will be closer to 0, but let's keep it.
+[2026-01-19 Mon] This time, we cannot take 3 neighbors blindly. Instead, consider 3 neighbors - 1 defect and 2 normal carbons (-0.32eV/Na-C bond): -2.41eV/atom + 2*0.32eV/Na-C = -1.77eV/Na-defect
+*We may consider introducing multiple defect types later*
+
+[2026-01-19 Mon] Note that we need to keep in mind that voltage is
+usually vs Na, while MC is vs. vacuum references.
+
+#+begin_src python :dir 'attach :results file output :file pore-filling-vs-radius.png
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  import numpy as np
+  import os
+
+  # Load the summary CSV
+  csv_path = 'summary.csv'
+  if not os.path.exists(csv_path):
+      # Try alternative pattern
+      import glob
+      csv_files = glob.glob('*.csv')
+      if csv_files:
+          csv_path = csv_files[0]
+          print(f"Using CSV file: {csv_path}")
+      else:
+          raise FileNotFoundError("No CSV file found. Please specify the correct filename.")
+
+  df = pd.read_csv(csv_path)
+  print(f"Loaded {len(df)} rows")
+  print("\nColumns:", df.columns.tolist())
+  print("\nFirst few rows:")
+  print(df[['pore_radius_A', 'voltage_V', 'defect_probability', 'final_filling']].head())
+
+  # Check for missing voltages
+  voltages = df['voltage_V'].unique()
+  voltages.sort()
+  print(f"\nUnique voltages: {voltages}")
+  print(f"Unique defect probabilities: {df['defect_probability'].unique()}")
+
+  # Plot filling ratio vs radius for different voltages
+  plt.figure(figsize=(11, 7))
+
+  # Use distinct colors and markers
+  colors = plt.cm.viridis(np.linspace(0, 1, len(voltages)))
+  markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h', 'H', '+', 'x', '|']
+
+  for i, v in enumerate(voltages):
+      subset = df[df['voltage_V'] == v].copy()
+      subset = subset.sort_values('pore_radius_A')
+      
+      # Only plot if we have data
+      if len(subset) > 0:
+          marker = markers[i % len(markers)] if i < len(markers) else 'o'
+          plt.plot(subset['pore_radius_A'], subset['final_filling'], 
+                   marker=marker, color=colors[i], markersize=8, linewidth=0,
+                   label=f'V={v:.3f} V')
+
+  plt.xlabel('Pore Radius (Å)', fontsize=12)
+  plt.ylabel('Final Filling Fraction', fontsize=12)
+  plt.title('Pore Filling vs Radius for Different Voltages', fontsize=14, fontweight='bold')
+  plt.legend(title='Voltage (V)', fontsize=10, title_fontsize=11, loc='best', ncol=2)
+  plt.grid(True, alpha=0.3, linestyle='--')
+
+  # Add simulation parameters as annotation
+  defect_prob = df['defect_probability'].iloc[0] if len(df) > 0 else 'N/A'
+  defect_placement = df['defect_placement'].iloc[0] if 'defect_placement' in df.columns else 'N/A'
+  temp = df['temperature_K'].iloc[0] if len(df) > 0 else 'N/A'
+
+  param_text = (
+      f"Defect probability: {defect_prob:.3f} ({defect_placement})\n"
+      f"Temperature: {temp} K\n"
+      f"E_Na‑Na: {df['energy_na_na_eV'].iloc[0]:.2f} eV\n"
+      f"E_Na‑C: {df['energy_na_c_eV'].iloc[0]:.2f} eV"
+  )
+  plt.text(0.02, 0.98, param_text, transform=plt.gca().transAxes,
+           fontsize=9,#  verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+  plt.tight_layout()
+  # plt.savefig('pore-filling-vs-radius.png', dpi=400)
+  plt.show()
+  # print(f"\nPlot saved as 'pore-filling-vs-radius.png'")
+#+end_src
+
+#+RESULTS:
+[[attachment:pore-filling-vs-radius.png]]
 #+end_results
+
+* License and citation
+  This software is provided under the MIT License. If you use this
+  code in your research, please cite the underlying physics background
+  and acknowledge the authors.
 
