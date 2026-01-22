@@ -232,8 +232,10 @@ def analyze_pore_filling(
     # Create a custom colorbar normalization based on voltage range
     voltage_min = df['voltage'].min()
     voltage_max = df['voltage'].max()
-    norm = mpl.colors.Normalize(vmin=voltage_min, vmax=voltage_max)
-    cmap = mpl.cm.get_cmap(COLORMAP)
+    # norm = mpl.colors.Normalize(vmin=voltage_min, vmax=voltage_max)
+    norm = mpl.colors.SymLogNorm(linthresh=0.01, linscale=0.5,
+                      vmin=voltage_min, vmax=voltage_max)
+    cmap = mpl.colormaps.get_cmap(COLORMAP)
     
     # Loop through each combination
     plots_created = 0
@@ -253,8 +255,14 @@ def analyze_pore_filling(
                 continue
             
             # Get unique voltages and radii for this subset
-            voltages = sorted(subset['voltage'].unique())
+            voltages = sorted(subset['voltage'].unique(), reverse=True)
             radii = sorted(subset['radius'].unique())
+            
+            # Compute surface site fraction per radius (geometry-dependent, independent of voltage)
+            surface_fraction = subset.groupby('radius').apply(
+                lambda x: x['n_surface_sites_first'].iloc[0] / x['n_valid_sites_first'].iloc[0],
+                include_groups=False
+            ).sort_index()
             
             if len(voltages) == 0 or len(radii) == 0:
                 continue
@@ -289,6 +297,8 @@ def analyze_pore_filling(
                     color=color,
                     label=f'{voltage:.3f} V'
                 )
+
+
                 
                 # Add confidence band (mean ± std)
                 if 'final_filling_std' in voltage_data.columns:
@@ -301,6 +311,16 @@ def analyze_pore_filling(
                         edgecolor='none'
                     )
             
+            # ================================================================
+            # Plot surface site fraction reference
+            ax.plot(
+                surface_fraction.index,
+                surface_fraction.values,
+                'o-',
+                markersize=MARKER_SIZE,
+                linewidth=LINE_WIDTH,
+                label='Surface site fraction',
+                zorder=10, color='red')
             # ================================================================
             # Formatting
             # ================================================================
@@ -315,7 +335,15 @@ def analyze_pore_filling(
             
             # Grid
             ax.grid(True, alpha=0.3, linestyle='-')
-            
+            ax.legend(
+                ncol=3,                     # 3 columns
+                loc='upper center',         # anchor point
+                bbox_to_anchor=(0.5, 1.00), # position relative to axes: 0.5 = center, 1.15 = 0% above top
+                fontsize='small',           # optional: reduce font size if many voltage entries
+                frameon=True,               # keep frame (default)
+                fancybox=False              # simpler box
+            )
+
             # ================================================================
             # Add colorbar for voltage
             # ================================================================
@@ -362,10 +390,11 @@ def analyze_pore_filling(
             if param_text:
                 param_box = '\n'.join(param_text)
                 ax.text(
-                    0.02, 0.02, param_box,
+                    0.98, 0.98, param_box,
                     transform=ax.transAxes,
                     fontsize=FONT_SIZE_PARAMS,
-                    verticalalignment='bottom',
+                    verticalalignment='top',
+                    horizontalalignment='right',
                     bbox=dict(
                         boxstyle='round',
                         facecolor='wheat',
