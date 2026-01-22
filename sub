@@ -1,0 +1,12 @@
+#!/bin/bash -l
+#SBATCH --signal=B:USR1@300
+#SBATCH --nodes="1"
+#SBATCH --time="24:00:00"
+#SBATCH --ntasks-per-node="96"
+#SBATCH --account="plgkeytech2-cpu"
+#SBATCH --partition="plgrid"
+#SBATCH --job-name="generate_structures"
+
+# module load GCC/13.2.0 OpenMPI/5.0.3 OpenBLAS/0.3.24 ScaLAPACK/2.2.0-fb FFTW/3.3.10
+
+bash run.sh
