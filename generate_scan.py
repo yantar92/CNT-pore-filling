@@ -27,6 +27,8 @@ def main():
                         help='Number of replicates per parameter set (default: 5)')
     parser.add_argument('--steps', type=int, default=1000000,
                         help='MC steps (default: 1e6)')
+    parser.add_argument('--temperature', type=float, default=298.0,
+                        help='Temperature (default: 298K)')
     parser.add_argument('--output', type=str, default='commands.txt',
                         help='Output file for commands')
     parser.add_argument('--seed_base', type=int, default=12345,
@@ -38,6 +40,7 @@ def main():
     defect_probs = [0.0, 0.174, 0.25]              # 3 defect densities
     na_defect_energies = np.linspace(-1.77, 0, 10) # 10 points
   
+    print(f"Temperature: {args.temperature}", file=sys.stderr)
     print(f"Voltages: {len(voltages)} points", file=sys.stderr)
     print(f"Radii: {len(radii)} points", file=sys.stderr)
     print(f"Defect probabilities: {len(defect_probs)} points", file=sys.stderr)
@@ -57,7 +60,7 @@ def main():
           
             cmd = (f"python mc-pore.py --voltage {v:.6f} --radius {r:.1f} "
                    f"--defect_probability {dp:.6f} --energy_na_defect {e_nd:.6f} "
-                   f"--steps {args.steps} --csv --quiet --seed {seed_int}")
+                   f"--steps {args.steps} --csv --quiet --seed {seed_int} --temp {args.temperature}")
             commands.append(cmd)
   
     with open(args.output, 'w') as f:
