@@ -178,7 +178,7 @@ def analyze_pore_filling(
     
     # Group and aggregate
     grouped = df.groupby(group_cols, as_index=False).agg({
-        'final_filling': ['mean', 'std', 'count'],
+        'final_filling': ['mean', 'std', 'count', 'min', 'max'],
         'n_valid_sites': 'first',  # should be constant for each radius
         'n_surface_sites': 'first'
     })
@@ -189,22 +189,15 @@ def analyze_pore_filling(
         for col in grouped.columns
     ]
     
-    # Rename for convenience
-    grouped = grouped.rename(columns={
-        'final_filling_mean': 'final_filling_mean',
-        'final_filling_std': 'final_filling_std',
-        'final_filling_count': 'replicate_count'
-    })
-    
     # Check for missing replicates
     expected_replicates = df['seed'].nunique()  # Should be 15
-    incomplete_groups = grouped[grouped['replicate_count'] < expected_replicates]
+    incomplete_groups = grouped[grouped['final_filling_count'] < expected_replicates]
     
     if len(incomplete_groups) > 0:
         warning_msg = (
             f"Warning: {len(incomplete_groups):,} parameter combinations have "
             f"fewer than {expected_replicates} replicates "
-            f"(min: {incomplete_groups['replicate_count'].min()})."
+            f"(min: {incomplete_groups['final_filling_count'].min()})."
         )
         warnings.warn(warning_msg)
         if verbose:
@@ -301,11 +294,11 @@ def analyze_pore_filling(
 
                 
                 # Add confidence band (mean ± std)
-                if 'final_filling_std' in voltage_data.columns:
+                if 'final_filling_min' in voltage_data.columns and 'final_filling_max' in voltage_data.columns:
                     ax.fill_between(
                         voltage_data['radius'],
-                        voltage_data['final_filling_mean'] - voltage_data['final_filling_std'],
-                        voltage_data['final_filling_mean'] + voltage_data['final_filling_std'],
+                        voltage_data['final_filling_min'],
+                        voltage_data['final_filling_max'],
                         alpha=ALPHA_CONFIDENCE,
                         color=color,
                         edgecolor='none'
