@@ -470,7 +470,7 @@ def visualize_model(model, ax_grid, ax_stats):
     # Update Stats Plot
     ax_stats.clear()
     ax_stats.plot(model.time_points, model.filling_history, label='Filling Fraction')
-    ax_stats.set_ylim(0, 1.0)
+    ax_stats.set_ylim(0, 1.2)
     ax_stats.set_xlabel('Monte Carlo Steps')
     ax_stats.set_ylabel('Filling %')
     ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f})")
