@@ -592,9 +592,6 @@ def run_simulation(
             pickle.dump(snapshots, f)
         if not quiet:
             print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
-    if visualize:
-        plt.show()
-        plt.savefig('summary.svg')
     
     # CSV output
     if csv_output:
