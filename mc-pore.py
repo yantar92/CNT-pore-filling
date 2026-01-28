@@ -616,6 +616,7 @@ def run_simulation(
             f"{model.mu:.6f}",
         ]
         print(','.join(row))
+    return model
 
 def replay_simulation(snapshot_file, interval=0.01, every=1):
     """
