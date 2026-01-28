@@ -386,6 +386,140 @@ class HardCarbonPoreModel:
 
 # --- Simulation & Visualization Wrapper ---
 
+def save_model_svg(model, filename, scale=80):
+    """
+    Save pore model atomic grid to FILENAME as svg.
+    SCALE is number of pixels per lattice unit in the svg.
+    """
+
+    # 1. Collect elements to draw
+    atoms = []  # List of (x, y, type)
+    xs, ys = [], []
+
+    # Visualization radius limit
+    vis_limit_lattice = model.radius_lattice_units + 1.8
+
+    for r in range(model.grid_width):
+        for c in range(model.grid_width):
+            site_type = model.grid[r, c]
+            if site_type == model.EMPTY:
+                continue
+
+            x, y = model.get_triangular_coordinates(r, c)
+            dist = np.sqrt(x**2 + y**2)
+
+            if dist > vis_limit_lattice:
+                continue
+
+            xs.append(x)
+            ys.append(y)
+
+            # Determine Color/Style Category
+            style_type = 'carbon'
+            if site_type == model.DEFECT:
+                style_type = 'carbon_defect'
+            elif site_type == model.NA:
+                style_type = 'na_bulk'
+
+            atoms.append((x, y, style_type))
+
+    if not atoms:
+        print("Warning: No atoms to visualize.")
+        return
+
+    # 2. Calculate ViewBox
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    pad = 1.0
+    width_u = (max_x - min_x) + 2 * pad
+    height_u = (max_y - min_y) + 2 * pad
+    width_px = width_u * scale
+    height_px = height_u * scale
+
+    # 3. Calculate Blur (Proportional to radius)
+    # Ref: stdDev=0.92, radius=7.97 -> ratio ~0.115
+    atom_radius_px = 0.4 * scale
+    blur_std_dev = atom_radius_px * 0.115
+
+    # 4. Generate SVG Content
+    svg_lines = []
+    svg_lines.append(f'<svg width="{width_px:.2f}" height="{height_px:.2f}" '
+                     f'viewBox="0 0 {width_px:.2f} {height_px:.2f}" '
+                     'xmlns="http://www.w3.org/2000/svg" '
+                     'xmlns:xlink="http://www.w3.org/1999/xlink">')
+
+    # 5. Definitions: Radial Gradients (3D Spheres) & Filter
+    svg_lines.append("<defs>")
+
+    # Filter for soft sphere edge (mimicking SVG Gaussian blur)
+    svg_lines.append(f'''
+    <filter id="atom_blur" x="-0.2" y="-0.2" width="1.4" height="1.4">
+      <feGaussianBlur stdDeviation="{blur_std_dev:.4f}" />
+    </filter>
+    ''')
+
+    fill_na="#c28d14"
+    # Na Bulk Gradient (Gold) - Focal point offset for 3D look
+    svg_lines.append('''
+    <radialGradient id="grad_na_bulk" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+        <stop offset="0%" style="stop-color:#f4b31c;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#c28d14;stop-opacity:1" />
+    </radialGradient>
+    ''')
+
+    fill_defect="#ff0000"
+    # Na Defect Gradient (Red) - Focal point offset for 3D look
+    svg_lines.append('''
+    <radialGradient id="grad_carbon_defect" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+        <stop offset="0%" style="stop-color:#ff5555;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#ff0000;stop-opacity:1" />
+    </radialGradient>
+    ''')
+
+    fill_carbon="#6a6a6a"
+    # Carbon Gradient (Grey) - Focal point offset for 3D look
+    svg_lines.append('''
+    <radialGradient id="grad_carbon" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+        <stop offset="0%" style="stop-color:#999999;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#6a6a6a;stop-opacity:1" />
+    </radialGradient>
+    ''')
+
+    svg_lines.append("</defs>")
+
+    # Background (White)
+    # svg_lines.append(f'<rect width="100%" height="100%" fill="white"/>')
+
+    # 6. Draw Atoms
+    atoms.sort(key=lambda a: a[1])
+
+    for x, y, atype in atoms:
+        px = (x - min_x + pad) * scale
+        py = (max_y - y + pad) * scale  # Inverted Y for drawing
+
+        # fill_val = "url(#grad_carbon)"  # Carbon default
+        fill_val = fill_carbon
+        if atype == 'na_bulk':
+            # fill_val = "url(#grad_na_bulk)"
+            fill_val = fill_na
+        elif atype == 'carbon_defect':
+            # fill_val = "url(#grad_carbon_defect)"
+            fill_val = fill_defect
+
+        # All atoms get the blur filter + radial gradient fill
+        # svg_lines.append(
+        #     f'<circle cx="{px:.2f}" cy="{py:.2f}" r="{atom_radius_px:.2f}" '
+        #     f'style="fill:{fill_val};stroke:none;filter:url(#atom_blur)" />')
+        svg_lines.append(
+            f'<circle cx="{px:.2f}" cy="{py:.2f}" r="{atom_radius_px:.2f}" '
+            f'style="fill:{fill_val};stroke:none" />')
+
+    svg_lines.append('</svg>')
+
+    with open(filename, 'w') as f:
+        f.write("\n".join(svg_lines))
+    print(f"Saved visualization to {filename}")
+
 
 def visualize_model(model, ax_grid, ax_stats):
     """Visualize MODEL interactively.
