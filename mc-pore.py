@@ -61,9 +61,9 @@ class HardCarbonPoreModel:
             'Na_C': energy_na_c,
             'Na_Defect': energy_na_defect
         }
-        
+
         # Boltzmann constant in eV/K
-        self.kB = 8.617333262e-5 
+        self.kB = 8.617333262e-5
         self.T = temperature_k
         self.beta = 1.0 / (self.kB * self.T)
         self.voltage = voltage
@@ -73,12 +73,12 @@ class HardCarbonPoreModel:
         self.NA = 1
         self.CARBON = 2
         self.DEFECT = 3
-        
+
         # Grid initialization
         self.grid = np.zeros((self.grid_width, self.grid_width), dtype=int)
 
         self._initialize_circular_pore(self.radius_lattice_units)
-        
+
         # 5. Pre-calculate Valid and Surface Sites for Efficiency
         self.valid_sites = []   # List of (r, c) inside the pore
         self.surface_sites = [] # List of (r, c) adjacent to carbon
@@ -128,7 +128,7 @@ class HardCarbonPoreModel:
         center_r = self.grid_width // 2
         center_c = self.grid_width // 2
         sqrt3_half = np.sqrt(3) / 2.0  # constant for triangular lattice geometry
-        
+
         # Precompute distances and identify wall sites
         distances = [[0.0 for _ in range(self.grid_width)] for _ in range(self.grid_width)]
         self.wall_sites = []
@@ -235,7 +235,7 @@ class HardCarbonPoreModel:
         e_sum = 0.0
         # Get all grid neighbors to check for Carbon/Defects
         neighbors = self.get_neighbors(r, c, include_walls=True)
-        
+
         for nr, nc in neighbors:
             if (nr, nc) == ignore_neighbor:
                 continue
@@ -625,12 +625,12 @@ def replay_simulation(snapshot_file, interval=0.01, every=1):
     """
     with open(snapshot_file, 'rb') as f:
         snapshots = pickle.load(f)
-    
+
     print(f"Loaded {len(snapshots)} snapshots")
-    
+
     fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
     plt.show(block=False)
-    
+
     for i, model in enumerate(snapshots):
         if i % every != 0:
             continue
@@ -639,7 +639,7 @@ def replay_simulation(snapshot_file, interval=0.01, every=1):
         ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f}) - Snapshot {i+1}/{len(snapshots)}")
         plt.draw()
         plt.pause(interval)
-    
+
     plt.show()
 
 
@@ -696,7 +696,7 @@ def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
 
             data_rows.append(row)
             print(f"Processed {fpath}: R={model.pore_radius:.1f}Å, V={model.voltage:.2f}V, filling={row['final_filling']:.3f}")
-            
+
         except Exception as e:
             print(f"Error processing {fpath}: {e}")
             traceback.print_exc()
