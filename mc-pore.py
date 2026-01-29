@@ -354,7 +354,7 @@ class HardCarbonPoreModel:
             self.time_points.append(self.mcs)
             self.filling_history.append(self.get_filling_fraction())
             # Snapshot time of full pore filling
-            if self.mcs_fill is None and self.mcs == 1:
+            if self.mcs_fill is None and self.get_filling_fraction() == 1:
                 self.mcs_fill = self.mcs
         if self.steps % (len(self.valid_sites) * 10) == 0:
             self._check_equilibrium()
