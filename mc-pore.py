@@ -34,7 +34,7 @@ class HardCarbonPoreModel:
             temperature_k=298.0,
             voltage=1.0,  # voltage relative to bulk Na
             eq_window=10000,
-            eq_slope_threshold=1e-7,
+            eq_slope_threshold=1e-8,
             eq_min_mcs=10000,
             quiet=False):
         """
