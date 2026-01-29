@@ -88,7 +88,7 @@ def analyze_pore_filling(
                 "temperature", "steps", "seed",
                 "final_filling", "equilibrium_reached", "mcs",
                 "n_valid_sites", "n_surface_sites", "default_p_gcmc",
-                "mu"
+                "mu", "fill_mcs"
             ],
             )
     except FileNotFoundError:

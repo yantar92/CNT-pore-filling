@@ -92,8 +92,9 @@ class HardCarbonPoreModel:
 
         # 7. History
         self.steps = 0
-        self.time_points = [0]
-        self.filling_history = [0]
+        self.mcs_fill = None
+        self.time_points = [0.0]
+        self.filling_history = [0.0]
 
         # 8. Equilibrium detection
         self.equilibrium_reached = False
@@ -352,6 +353,9 @@ class HardCarbonPoreModel:
         if self.steps % (len(self.valid_sites) // 2) == 0:
             self.time_points.append(self.mcs)
             self.filling_history.append(self.get_filling_fraction())
+            # Snapshot time of full pore filling
+            if self.mcs_fill is None and self.mcs == 1:
+                self.mcs_fill = self.mcs
         if self.steps % (len(self.valid_sites) * 10) == 0:
             self._check_equilibrium()
 
@@ -748,6 +752,7 @@ def run_simulation(
             f"{len(model.surface_sites)}",
             f"{model.default_p_gcmc:.6f}",
             f"{model.mu:.6f}",
+            f"{model.mcs_fill}",
         ]
         print(','.join(row))
     return model
@@ -827,6 +832,7 @@ def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
                 'n_surface_sites': len(model.surface_sites),
                 'default_p_gcmc': model.default_p_gcmc,
                 'mu_eV': model.mu,
+                'fill_mcs': model.fill_mcs,
             }
 
             data_rows.append(row)
