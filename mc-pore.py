@@ -16,6 +16,7 @@ import pickle
 import copy
 import argparse
 import sys
+import pandas as pd
 
 class HardCarbonPoreModel:
     def __init__(
@@ -95,6 +96,11 @@ class HardCarbonPoreModel:
         self.mcs_fill = None
         self.time_points = [0.0]
         self.filling_history = [0.0]
+        self.formation_energy_history = [-self.mu]
+        self.fine_time_points_entry = []
+        self.fine_time_points_exit = []
+        self.dE_history_entry = []
+        self.dE_history_exit = []
 
         # 8. Equilibrium detection
         self.equilibrium_reached = False
@@ -252,6 +258,27 @@ class HardCarbonPoreModel:
 
         return e_sum
 
+    def formation_energy(self):
+        """Calculate formation energy of the system.
+        """
+        energy = 0
+        tot_na = 0
+        for r, c in self.valid_sites:
+            if self.grid[r, c] == self.NA:
+                tot_na += 1
+            else:
+                continue
+            for nr, nc in self.get_neighbors(r, c, include_walls=True):
+                if self.grid[nr, nc] == self.NA:
+                    energy += self.energies['Na_Na'] / 2.0
+                elif self.grid[nr, nc] == self.CARBON:
+                    energy += self.energies['Na_C']
+                elif self.grid[nr, nc] == self.DEFECT:
+                    energy += self.energies['Na_Defect']
+        if tot_na == 0:
+            return -self.mu
+        return energy/tot_na - self.mu
+
     def calculate_swap_energy(self, r1, c1, r2, c2):
         """Delta E for moving particle from (r1, c1) to (r2, c2)."""
         assert self.grid[r2, c2] == self.EMPTY
@@ -306,6 +333,9 @@ class HardCarbonPoreModel:
             # Delta E = E_interaction - mu
             interaction = self._calculate_potential_energy_at_site(r, c)
             dE = interaction - self.mu
+            # print(f"Insertion: {dE} = {interaction} - {self.mu}")
+            self.fine_time_points_entry.append(self.mcs)
+            self.dE_history_entry.append(dE)
 
             if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
                 self.grid[r, c] = self.NA
@@ -315,6 +345,9 @@ class HardCarbonPoreModel:
             # Reverse of insertion: Delta E = -(E_interaction - mu)
             interaction = self._calculate_potential_energy_at_site(r, c)
             dE = -(interaction - self.mu)
+            # print(f"Removal: {dE} = {self.mu} - {interaction}")
+            self.fine_time_points_exit.append(self.mcs)
+            self.dE_history_exit.append(dE)
 
             if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
                 self.grid[r, c] = self.EMPTY
@@ -352,7 +385,8 @@ class HardCarbonPoreModel:
         # Record stats every 0.5 MCS (approx)
         if self.steps % (len(self.valid_sites) // 2) == 0:
             self.time_points.append(self.mcs)
-            self.filling_history.append(self.get_filling_fraction())
+            self.filling_history.append(self.get_filling_fraction() * 100)
+            self.formation_energy_history.append(self.formation_energy())
             # Snapshot time of full pore filling
             if self.mcs_fill is None and self.get_filling_fraction() == 1:
                 self.mcs_fill = self.mcs
@@ -525,7 +559,7 @@ def save_model_svg(model, filename, scale=80):
     print(f"Saved visualization to {filename}")
 
 
-def visualize_model(model, ax_grid, ax_stats):
+def visualize_model(model, ax_grid, ax_stats, dE_axis=None, formation_axis=None):
     """Visualize MODEL interactively.
     AX_GRID is axis to be used to plot the pore.
     AX_STATS is pore filling stats axis.
@@ -608,11 +642,33 @@ def visualize_model(model, ax_grid, ax_stats):
     # Update Stats Plot
     ax_stats.clear()
     ax_stats.plot(model.time_points, model.filling_history, label='Filling Fraction')
-    ax_stats.set_ylim(0, 1.2)
+    ax_stats.set_ylim(0, 120)
     ax_stats.set_xlabel('Monte Carlo Steps')
     ax_stats.set_ylabel('Filling %')
     ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f})")
     ax_stats.grid(True)
+    lines1, labels1 = ax_stats.get_legend_handles_labels()
+    lines2, labels2 = [], []
+    legend_axis = ax_stats
+    if formation_axis is not None:
+        formation_axis.clear()
+        formation_axis.set_title("Formation energy history")
+        formation_axis.plot(model.time_points[10:], model.formation_energy_history[10:], label='Formation energy', color='red')
+        formation_axis.set_ylabel('Formation energy, eV/atom')
+    if dE_axis is not None:
+        legend_axis = dE_axis
+        dE_axis.clear()
+        dE_axis.set_title("Entry and exit of Na")
+        dE_axis.set_ylabel('Entry/exit energy, eV/atom')
+        # dE_axis.yaxis.set_label_position('right')
+        window = 5
+        window_entry = int(window * (1.0 - model.default_p_gcmc)/model.default_p_gcmc)
+        dE_axis.plot(model.fine_time_points_entry, pd.DataFrame(model.dE_history_entry).rolling(window_entry).mean(), color='green', label='dE entry')
+        dE_axis.plot(model.fine_time_points_exit, pd.DataFrame(model.dE_history_exit).rolling(window).mean(), color='red', label='dE exit')
+        dE_axis.legend()
+        # lines2, labels2 = dE_axis.get_legend_handles_labels()
+    
+    # legend_axis.legend(lines1 + lines2, labels1 + labels2, loc=0)
 
     # Add simulation parameters as text
     param_text = (
@@ -623,7 +679,7 @@ def visualize_model(model, ax_grid, ax_stats):
         f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
         f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
         f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
-    ax_stats.text(0.02, 0.98, param_text, transform=ax_stats.transAxes,
+    legend_axis.text(0.02, 0.98, param_text, transform=ax_stats.transAxes,
                   fontsize=8, verticalalignment='top',
                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
@@ -693,7 +749,8 @@ def run_simulation(
 
     # Visualization Setup
     if visualize:
-        fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
+        fig, ((ax_grid, ax_stats), (dE_axis, formation_axis)) = plt.subplots(2, 2, figsize=(10, 10))
+        # dE_axis = ax_stats.twinx()
         plt.show(block=False)
 
     for attempt in range(total_attempts):
@@ -704,7 +761,7 @@ def run_simulation(
                 print(f"Equilibrium reached at MCS {model.mcs:.2f}")
             if visualize and not quiet:
                 print(f"  Final filling = {model.filling_history[-1]:.2%}")
-                visualize_model(model, ax_grid, ax_stats)
+                visualize_model(model, ax_grid, ax_stats, dE_axis, formation_axis)
                 plt.draw()
                 plt.pause(0.01)
             if snapshot_file is not None:
@@ -716,7 +773,7 @@ def run_simulation(
             if visualize and not quiet:
                 print(f"  Step {int(model.mcs)}/{MC_STEPS}:"
                       f" Filling = {model.filling_history[-1]:.2%}")
-                visualize_model(model, ax_grid, ax_stats)
+                visualize_model(model, ax_grid, ax_stats, dE_axis, formation_axis)
                 plt.draw()
                 plt.pause(0.01)
             if snapshot_file is not None:
@@ -768,13 +825,14 @@ def replay_simulation(snapshot_file, interval=0.01, every=1):
 
     print(f"Loaded {len(snapshots)} snapshots")
 
-    fig, (ax_grid, ax_stats) = plt.subplots(1, 2, figsize=(12, 6))
+    fig, (ax_grid, ax_stats, dE_axis, formation_axis) = plt.subplots(2, 2, figsize=(10, 10))
+    # dE_axis = ax_stats.twinx()
     plt.show(block=False)
 
     for i, model in enumerate(snapshots):
         if i % every != 0:
             continue
-        visualize_model(model, ax_grid, ax_stats)
+        visualize_model(model, ax_grid, ax_stats, dE_axis, formation_axis)
         ax_grid.set_title(f"Pore State (MCS: {int(model.mcs)}) - Snapshot {i+1}/{len(snapshots)}")
         ax_stats.set_title(f"Filling Kinetics (P_GCMC={model.default_p_gcmc:.2f}) - Snapshot {i+1}/{len(snapshots)}")
         plt.draw()
