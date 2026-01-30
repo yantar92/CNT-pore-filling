@@ -23,7 +23,7 @@ for voltage, prob, temp, radius in itertools.product(voltages, defect_probabilit
         seed = hashlib.md5((param_str + f"_{rep}").encode()).hexdigest()
         seed_int = int(seed[:8], 16)
         cmd = (f"python mc-pore.py --voltage {voltage}  --radius {radius} "
-               f"--defect_probability {prob} --file {param_str}_{rep}.pkl"
+               f"--defect_probability {prob} --file {param_str}_{rep}.pkl "
                f"--steps 1000000 --seed {seed_int} --temp {temp}")
         commands.append(cmd)
 
