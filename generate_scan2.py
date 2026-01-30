@@ -1,6 +1,7 @@
 import itertools
 import hashlib
 import sys
+import numpy as np
 
 def generate_voltage_points():
     """20 voltage points with higher density in 0-0.1V."""
