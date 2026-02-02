@@ -968,5 +968,65 @@ def main():
         quiet=args.quiet,
         seed=args.seed)
 
+def plot_filled_pore_energy():
+    """Plot formation energy of the pore vs. pore radius.
+    Consider the pore to be fully filled.
+    """
+    energy_na_na = -0.35
+    formation_energies = []
+    formation_energies2 = []
+    formation_energies3 = []
+    formation_energies4 = []
+    radiuses = []
+    inv_radiuses = []
+    for radius in np.arange(5, 100, 1, dtype=float):
+        model = HardCarbonPoreModel(
+            radius,
+            defect_probability=0,
+            energy_na_c=energy_na_na,
+            energy_na_na=energy_na_na,
+            voltage=0)
+        model2 = HardCarbonPoreModel(
+            radius,
+            defect_probability=0,
+            energy_na_c=-0.33,
+            energy_na_na=energy_na_na,
+            voltage=0)
+        model3 = HardCarbonPoreModel(
+            radius,
+            defect_probability=0.174,
+            energy_na_c=-0.33,
+            energy_na_na=energy_na_na,
+            voltage=0)
+        model4 = HardCarbonPoreModel(
+            radius,
+            defect_probability=0,
+            energy_na_c=0,
+            energy_na_na=energy_na_na,
+            voltage=0)
+        # Fill the pore
+        for m in [model, model2, model3, model4]:
+            for r, c in m.valid_sites:
+                m.grid[r, c] = model.NA
+        formation_energies.append(model.formation_energy())
+        formation_energies2.append(model2.formation_energy())
+        formation_energies3.append(model3.formation_energy())
+        formation_energies4.append(model4.formation_energy())
+        radiuses.append(radius)
+        inv_radiuses.append(1.0/radius)
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    ax.plot(inv_radiuses, formation_energies, 'o-', label='Na in Na')
+    ax.plot(inv_radiuses, formation_energies2, 'o-', label='Na in C')
+    ax.plot(inv_radiuses, formation_energies3, 'o-', label='Na in C (with defects)')
+    ax.plot(inv_radiuses, formation_energies4, 'o-', label='Na in C (Na-C = 0eV)')
+    # ax.set_xlabel('Radius, Å')
+    ax.set_xlabel('Reciprocal radius, 1/Å')
+    ax.set_ylabel('Formation energy, eV/atom')
+    ax.set_title('Formation energy of fully filled pore (Na in Na)')
+    ax.legend()
+    ax.grid()
+    plt.show()
+
+
 if __name__ == "__main__":
     main()
