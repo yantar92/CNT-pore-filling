@@ -38,7 +38,7 @@ def main():
     voltages = generate_voltage_points()           # 20 points
     radii = np.arange(5, 31, 1)                    # 26 points: 5..30 Å
     defect_probs = [0.0, 0.174, 0.25]              # 3 defect densities
-    na_defect_energies = np.linspace(-1.77, 0, 10) # 10 points
+    na_defect_energies = np.linspace(-1.77, 0, 5) # 5 points
   
     print(f"Temperature: {args.temperature}", file=sys.stderr)
     print(f"Voltages: {len(voltages)} points", file=sys.stderr)
