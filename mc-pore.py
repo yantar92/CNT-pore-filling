@@ -825,7 +825,7 @@ def replay_simulation(snapshot_file, interval=0.01, every=1):
 
     print(f"Loaded {len(snapshots)} snapshots")
 
-    fig, (ax_grid, ax_stats, dE_axis, formation_axis) = plt.subplots(2, 2, figsize=(10, 10))
+    fig, ((ax_grid, ax_stats), (dE_axis, formation_axis)) = plt.subplots(2, 2, figsize=(10, 10))
     # dE_axis = ax_stats.twinx()
     plt.show(block=False)
 
