@@ -27,12 +27,12 @@ def main():
                         help='Number of replicates per parameter set (default: 5)')
     parser.add_argument('--converge', action='store_true',
                         help='Enable convergence loop: run replicates until statistics stabilize')
-    parser.add_argument('--convergence_threshold', type=float, default=0.05,
-                        help='Relative change threshold for mean and std (default: 0.05)')
+    parser.add_argument('--convergence_threshold', type=float, default=0.01,
+                        help='Relative change threshold for mean and std (default: 0.01)')
     parser.add_argument('--min_replicates', type=int, default=3,
                         help='Minimum number of replicates before checking convergence (default: 3)')
-    parser.add_argument('--max_replicates', type=int, default=50,
-                        help='Maximum number of replicates (default: 50)')
+    parser.add_argument('--max_replicates', type=int, default=100,
+                        help='Maximum number of replicates (default: 100)')
     parser.add_argument('--steps', type=int, default=1000000,
                         help='MC steps (default: 1e6)')
     parser.add_argument('--temperature', type=float, default=298.0,
