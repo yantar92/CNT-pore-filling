@@ -5,7 +5,8 @@ Command line usage:
     python mc-pore.py [--voltage 0.1] [--radius 10.0] [--file snapshots.pkl]
         [--steps 20000] [--visualize] [--energy_na_defect -1.77]
         [--temp 298] [--defect_placement surface] [--defect_probability 0.174]
-        [--csv] [--quiet] [--seed INT]
+        [--csv] [--quiet] [--seed INT] [--converge] [--convergence_threshold 0.05]
+        [--min_replicates 3] [--max_replicates 50]
 """
 
 import numpy as np
@@ -814,6 +815,131 @@ def run_simulation(
         print(','.join(row))
     return model
 
+def run_convergence_simulation(
+        voltage=0.1, steps=20000, temp=298, radius=10.0,
+        defect_placement='surface',
+        defect_probability=0.058 * 3,
+        energy_na_na=-0.35,
+        energy_na_c=-0.32,
+        energy_na_defect=-1.77,
+        convergence_threshold=0.01,
+        min_replicates=3,
+        max_replicates=50,
+        base_seed=None,
+        quiet=False):
+    """
+    Run multiple simulations until statistics of final filling and pore filling time converge.
+    Prints CSV line for each replicate.
+    Returns list of (final_filling, mcs_fill) tuples.
+    """
+    replicates = []
+    fill_means = []
+    fill_stds = []
+    time_means = []
+    time_stds = []
+
+    for i in range(max_replicates):
+        # Determine seed for this replicate
+        if base_seed is not None:
+            seed = base_seed + i
+        else:
+            seed = None
+
+        # Run simulation with csv_output=True (prints CSV line)
+        model = run_simulation(
+            voltage=voltage,
+            steps=steps,
+            temp=temp,
+            radius=radius,
+            defect_placement=defect_placement,
+            defect_probability=defect_probability,
+            visualize=False,
+            snapshot_file=None,
+            energy_na_na=energy_na_na,
+            energy_na_c=energy_na_c,
+            energy_na_defect=energy_na_defect,
+            csv_output=True,
+            seed=seed,
+            quiet=quiet)
+
+        # Extract results
+        final_filling = model.filling_history[-1] if model.filling_history else 0.0
+        mcs_fill = model.mcs_fill if model.mcs_fill is not None else model.mcs
+
+        replicates.append((final_filling, mcs_fill))
+
+        # Check convergence after min_replicates
+        if len(replicates) >= min_replicates:
+            # Compute current statistics
+            fill_array = np.array([r[0] for r in replicates])
+            time_array = np.array([r[1] for r in replicates])
+            fill_mean = fill_array.mean()
+            fill_std = fill_array.std(ddof=1) if len(replicates) > 1 else 0.0
+            time_mean = time_array.mean()
+            time_std = time_array.std(ddof=1) if len(replicates) > 1 else 0.0
+
+            # Compute relative changes (handle zero denominators)
+            fill_mean_change = 0.0
+            fill_std_change = 0.0
+            time_mean_change = 0.0
+            time_std_change = 0.0
+
+            if fill_means:
+                prev_fill_mean = fill_means[-1]
+                if abs(prev_fill_mean) > 1e-12:
+                    fill_mean_change = abs(fill_mean - prev_fill_mean) / prev_fill_mean
+                else:
+                    fill_mean_change = abs(fill_mean - prev_fill_mean)
+                prev_fill_std = fill_stds[-1]
+                if prev_fill_std > 1e-12:
+                    fill_std_change = abs(fill_std - prev_fill_std) / prev_fill_std
+                else:
+                    fill_std_change = abs(fill_std - prev_fill_std)
+
+            if time_means:
+                prev_time_mean = time_means[-1]
+                if abs(prev_time_mean) > 1e-12:
+                    time_mean_change = abs(time_mean - prev_time_mean) / prev_time_mean
+                else:
+                    time_mean_change = abs(time_mean - prev_time_mean)
+                prev_time_std = time_stds[-1]
+                if prev_time_std > 1e-12:
+                    time_std_change = abs(time_std - prev_time_std) / prev_time_std
+                else:
+                    time_std_change = abs(time_std - prev_time_std)
+
+            fill_means.append(fill_mean)
+            fill_stds.append(fill_std)
+            time_means.append(time_mean)
+            time_stds.append(time_std)
+
+            if not quiet:
+                print(f"fill_mean: Δ{fill_mean_change}, fill_std: Δ{fill_std_change}")
+                print(f"time_mean: Δ{time_mean_change}, time_std: Δ{time_std_change}")
+            # Check if all changes below threshold
+            if (fill_mean_change <= convergence_threshold and
+                fill_std_change <= convergence_threshold and
+                time_mean_change <= convergence_threshold and
+                time_std_change <= convergence_threshold):
+                if not quiet:
+                    print(f"Convergence reached after {i+1} replicates", file=sys.stderr)
+                break
+        else:
+            # Not enough replicates yet, still store stats for future comparison
+            fill_array = np.array([r[0] for r in replicates])
+            time_array = np.array([r[1] for r in replicates])
+            fill_mean = fill_array.mean()
+            fill_std = fill_array.std(ddof=1) if len(replicates) > 1 else 0.0
+            time_mean = time_array.mean()
+            time_std = time_array.std(ddof=1) if len(replicates) > 1 else 0.0
+            fill_means.append(fill_mean)
+            fill_stds.append(fill_std)
+            time_means.append(time_mean)
+            time_stds.append(time_std)
+
+    return replicates
+
+
 def replay_simulation(snapshot_file, interval=0.01, every=1):
     """
     Load snapshots from SNAPSHOT_FILE and visualize them sequentially.
@@ -943,30 +1069,54 @@ def main():
                         help='Defect placement mode')
     parser.add_argument('--defect_probability', type=float, default=0.058*3,
                         help='Defect probability (fraction)')
+    parser.add_argument('--converge', action='store_true',
+                        help='Enable convergence loop: run replicates until statistics stabilize')
+    parser.add_argument('--convergence_threshold', type=float, default=0.05,
+                        help='Relative change threshold for mean and std (default: 0.05)')
+    parser.add_argument('--min_replicates', type=int, default=3,
+                        help='Minimum number of replicates before checking convergence (default: 3)')
+    parser.add_argument('--max_replicates', type=int, default=50,
+                        help='Maximum number of replicates (default: 50)')
     parser.add_argument('--csv', action='store_true',
                         help='Output a single CSV line with final results')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress all progress output')
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility')
-    
     args = parser.parse_args()
-    
-    run_simulation(
-        voltage=args.voltage,
-        steps=args.steps,
-        temp=args.temp,
-        radius=args.radius,
-        defect_placement=args.defect_placement,
-        defect_probability=args.defect_probability,
-        visualize=args.visualize,
-        snapshot_file=args.file,
-        energy_na_na=args.energy_na_na,
-        energy_na_c=args.energy_na_c,
-        energy_na_defect=args.energy_na_defect,
-        csv_output=args.csv,
-        quiet=args.quiet,
-        seed=args.seed)
+
+    if args.converge:
+        run_convergence_simulation(
+            voltage=args.voltage,
+            steps=args.steps,
+            temp=args.temp,
+            radius=args.radius,
+            defect_placement=args.defect_placement,
+            defect_probability=args.defect_probability,
+            energy_na_na=args.energy_na_na,
+            energy_na_c=args.energy_na_c,
+            energy_na_defect=args.energy_na_defect,
+            convergence_threshold=args.convergence_threshold,
+            min_replicates=args.min_replicates,
+            max_replicates=args.max_replicates,
+            base_seed=args.seed,
+            quiet=args.quiet)
+    else:
+        run_simulation(
+            voltage=args.voltage,
+            steps=args.steps,
+            temp=args.temp,
+            radius=args.radius,
+            defect_placement=args.defect_placement,
+            defect_probability=args.defect_probability,
+            visualize=args.visualize,
+            snapshot_file=args.file,
+            energy_na_na=args.energy_na_na,
+            energy_na_c=args.energy_na_c,
+            energy_na_defect=args.energy_na_defect,
+            csv_output=args.csv,
+            quiet=args.quiet,
+            seed=args.seed)
 
 def plot_filled_pore_energy():
     """Plot formation energy of the pore vs. pore radius.
