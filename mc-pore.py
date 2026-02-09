@@ -668,7 +668,7 @@ def visualize_model(model, ax_grid, ax_stats, dE_axis=None, formation_axis=None)
         dE_axis.plot(model.fine_time_points_exit, pd.DataFrame(model.dE_history_exit).rolling(window).mean(), color='red', label='dE exit')
         dE_axis.legend()
         # lines2, labels2 = dE_axis.get_legend_handles_labels()
-    
+
     # legend_axis.legend(lines1 + lines2, labels1 + labels2, loc=0)
 
     # Add simulation parameters as text
@@ -681,36 +681,40 @@ def visualize_model(model, ax_grid, ax_stats, dE_axis=None, formation_axis=None)
         f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
         f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")
     legend_axis.text(0.02, 0.98, param_text, transform=ax_stats.transAxes,
-                  fontsize=8, verticalalignment='top',
-                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-
+                     fontsize=8, verticalalignment='top',
+                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
 
 def run_simulation(
-        voltage=0.1, steps=20000, temp=298, radius=10.0,
-        defect_placement='surface',
-        defect_probability=0.058 * 3,
+        model=HardCarbonPoreModel(
+            pore_radius_angstrom=10.0,
+            temperature_k=298,
+            voltage=0.1,
+            # defect_probability=0.058,
+            # Defect density should be scaled by unknown factor to get 3d->2d mapping
+            # The carbons are placed on Na lattice, so the number of C is different
+            # here and thus need to adjust concentration.
+            # defect_probability=0.058 * 3,
+            defect_probability=0.058 * 3,
+            defect_placement='surface',
+            energy_na_na=-0.35,
+            energy_na_c=-0.32,
+            energy_na_defect=-1.77,
+            quiet=False,
+        ),
+        steps=20000,
         visualize=True,
-        snapshot_file='snapshots.pkl',
-        energy_na_na=-0.35,
-        energy_na_c=-0.32,
-        energy_na_defect=-1.77,
+        snapshot_file: str | None = 'snapshots.pkl',
         csv_output=False,
         seed=None,
         quiet=False):
     """
     Run a Monte Carlo simulation of pore filling.
-    
+
     Args:
-        voltage: Voltage relative to bulk Na (V)
+        model: HardCarbonPoreModel
         steps: Number of normalized Monte Carlo steps (MCS)
-        temp: Temperature (K)
-        radius: Pore radius (Å)
-        defect_placement: 'surface' or 'random'
         snapshot_file: If provided, save snapshots to this pickle file.
-        energy_na_na: Na-Na interaction energy (eV)
-        energy_na_c: Na-C interaction energy (eV)
-        energy_na_defect: Na-defect interaction energy (eV)
         csv_output: If True, print a CSV line with results to stdout.
         seed: Random seed for reproducibility (None for random).
         quiet: Suppress progress output.
@@ -718,27 +722,12 @@ def run_simulation(
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
-    
+
     MC_STEPS = steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
 
     # Initialize Model
-    model = HardCarbonPoreModel(
-        pore_radius_angstrom=radius,
-        temperature_k=temp,
-        voltage=voltage,
-        # defect_probability=0.058,
-        # Defect density should be scaled by unknown factor to get 3d->2d mapping
-        # The carbons are placed on Na lattice, so the number of C is different
-        # here and thus need to adjust concentration.
-        # defect_probability=0.058 * 3,
-        defect_probability=defect_probability,
-        defect_placement=defect_placement,
-        energy_na_na=energy_na_na,
-        energy_na_c=energy_na_c,
-        energy_na_defect=energy_na_defect,
-        quiet=quiet,
-    )
+    model.quiet = quiet
     snapshots = []
 
     total_sites = len(model.valid_sites)
@@ -757,28 +746,24 @@ def run_simulation(
     for attempt in range(total_attempts):
         model.run_step()
 
-        if model.equilibrium_reached:
-            if not quiet:
-                print(f"Equilibrium reached at MCS {model.mcs:.2f}")
-            if visualize and not quiet:
-                print(f"  Final filling = {model.filling_history[-1]:.2%}")
-                visualize_model(model, ax_grid, ax_stats, dE_axis, formation_axis)
-                plt.draw()
-                plt.pause(0.01)
+        should_report = (model.equilibrium_reached
+                         or attempt == total_attempts - 1
+                         or attempt % (SNAPSHOT_INTERVAL * total_sites) == 0)
+
+        if should_report:
             if snapshot_file is not None:
                 snapshots.append(model.take_snapshot())
-            break
-
-        if attempt % (SNAPSHOT_INTERVAL * total_sites) == 0\
-           or attempt == total_attempts - 1:
-            if visualize and not quiet:
+            if not quiet and model.equilibrium_reached:
+                print(f"Equilibrium reached at MCS {model.mcs:.2f}")
+            elif not quiet:
                 print(f"  Step {int(model.mcs)}/{MC_STEPS}:"
                       f" Filling = {model.filling_history[-1]:.2%}")
+            if not quiet and visualize:
                 visualize_model(model, ax_grid, ax_stats, dE_axis, formation_axis)
                 plt.draw()
                 plt.pause(0.01)
-            if snapshot_file is not None:
-                snapshots.append(model.take_snapshot())
+        if model.equilibrium_reached:
+            break
 
     elapsed = time.time() - start_time
     if not quiet:
@@ -788,19 +773,19 @@ def run_simulation(
             pickle.dump(snapshots, f)
         if not quiet:
             print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
-    
+
     # CSV output
     if csv_output:
         final_filling = model.filling_history[-1] if model.filling_history else 0.0
         row = [
-            f"{voltage:.6f}",
-            f"{radius:.1f}",
-            f"{defect_probability:.6f}",
-            defect_placement,
-            f"{energy_na_defect:.6f}",
-            f"{energy_na_na:.6f}",
-            f"{energy_na_c:.6f}",
-            f"{temp:.1f}",
+            f"{model.voltage:.6f}",
+            f"{model.pore_radius:.1f}",
+            f"{model.defect_probability:.6f}",
+            model.defect_placement,
+            f"{model.energies['Na_Defect']:.6f}",
+            f"{model.energies['Na_Na']:.6f}",
+            f"{model.energies['Na_C']:.6f}",
+            f"{model.T:.1f}",
             f"{steps}",
             str(seed) if seed is not None else '',
             f"{final_filling:.6f}",
@@ -815,13 +800,25 @@ def run_simulation(
         print(','.join(row))
     return model
 
+
 def run_convergence_simulation(
-        voltage=0.1, steps=20000, temp=298, radius=10.0,
-        defect_placement='surface',
-        defect_probability=0.058 * 3,
-        energy_na_na=-0.35,
-        energy_na_c=-0.32,
-        energy_na_defect=-1.77,
+        model=HardCarbonPoreModel(
+            pore_radius_angstrom=10.0,
+            temperature_k=298,
+            voltage=0.1,
+            # defect_probability=0.058,
+            # Defect density should be scaled by unknown factor to get 3d->2d mapping
+            # The carbons are placed on Na lattice, so the number of C is different
+            # here and thus need to adjust concentration.
+            # defect_probability=0.058 * 3,
+            defect_probability=0.058 * 3,
+            defect_placement='surface',
+            energy_na_na=-0.35,
+            energy_na_c=-0.32,
+            energy_na_defect=-1.77,
+            quiet=False,
+        ),
+        steps=20000,
         convergence_threshold=0.01,
         min_replicates=3,
         max_replicates=50,
@@ -846,25 +843,20 @@ def run_convergence_simulation(
             seed = None
 
         # Run simulation with csv_output=True (prints CSV line)
-        model = run_simulation(
-            voltage=voltage,
+        model_tem = copy.deepcopy(model)
+        model_tem.quiet = quiet
+        model_tem = run_simulation(
+            model=model_tem,
             steps=steps,
-            temp=temp,
-            radius=radius,
-            defect_placement=defect_placement,
-            defect_probability=defect_probability,
             visualize=False,
             snapshot_file=None,
-            energy_na_na=energy_na_na,
-            energy_na_c=energy_na_c,
-            energy_na_defect=energy_na_defect,
             csv_output=True,
             seed=seed,
             quiet=quiet)
 
         # Extract results
-        final_filling = model.filling_history[-1] if model.filling_history else 0.0
-        mcs_fill = model.mcs_fill if model.mcs_fill is not None else model.mcs
+        final_filling = model_tem.filling_history[-1] if model_tem.filling_history else 0.0
+        mcs_fill = model_tem.mcs_fill if model_tem.mcs_fill is not None else model_tem.mcs
 
         replicates.append((final_filling, mcs_fill))
 
@@ -1087,15 +1079,16 @@ def main():
 
     if args.converge:
         run_convergence_simulation(
-            voltage=args.voltage,
+            HardCarbonPoreModel(
+                voltage=args.voltage,
+                temperature_k=args.temp,
+                pore_radius_angstrom=args.radius,
+                defect_placement=args.defect_placement,
+                defect_probability=args.defect_probability,
+                energy_na_na=args.energy_na_na,
+                energy_na_c=args.energy_na_c,
+                energy_na_defect=args.energy_na_defect),
             steps=args.steps,
-            temp=args.temp,
-            radius=args.radius,
-            defect_placement=args.defect_placement,
-            defect_probability=args.defect_probability,
-            energy_na_na=args.energy_na_na,
-            energy_na_c=args.energy_na_c,
-            energy_na_defect=args.energy_na_defect,
             convergence_threshold=args.convergence_threshold,
             min_replicates=args.min_replicates,
             max_replicates=args.max_replicates,
@@ -1103,20 +1096,22 @@ def main():
             quiet=args.quiet)
     else:
         run_simulation(
-            voltage=args.voltage,
-            steps=args.steps,
-            temp=args.temp,
-            radius=args.radius,
-            defect_placement=args.defect_placement,
-            defect_probability=args.defect_probability,
+            HardCarbonPoreModel(
+                voltage=args.voltage,
+                temperature_k=args.temp,
+                pore_radius_angstrom=args.radius,
+                defect_placement=args.defect_placement,
+                defect_probability=args.defect_probability,
+                energy_na_na=args.energy_na_na,
+                energy_na_c=args.energy_na_c,
+                energy_na_defect=args.energy_na_defect),
             visualize=args.visualize,
             snapshot_file=args.file,
-            energy_na_na=args.energy_na_na,
-            energy_na_c=args.energy_na_c,
-            energy_na_defect=args.energy_na_defect,
+            steps=args.steps,
             csv_output=args.csv,
             quiet=args.quiet,
             seed=args.seed)
+
 
 def plot_filled_pore_energy():
     """Plot formation energy of the pore vs. pore radius.
