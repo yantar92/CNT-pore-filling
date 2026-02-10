@@ -17,11 +17,11 @@ temperatures = [298, 500, 1000, 1400, 1500, 1600, 1800, 2000]
 radiuses = np.arange(5, 31, 1)
 voltages = generate_voltage_points()
 commands = []
-for voltage, prob, temp, radius in itertools.product(voltages, defect_probabilities, temperatures, radiuses):
-    param_str = f"{voltage:.3f}_{prob:.3f}_{temp:.0f}_{radius}"
-    seed = hashlib.md5((param_str + f"_{rep}").encode()).hexdigest()
+for prob, temp, radius in itertools.product(defect_probabilities, temperatures, radiuses):
+    param_str = f"{prob:.3f}_{temp:.0f}_{radius}"
+    seed = hashlib.md5(param_str.encode()).hexdigest()
     seed_int = int(seed[:8], 16)
-    cmd = (f"python mc-pore.py --voltage {voltage}  --radius {radius} "
+    cmd = (f"python mc-pore.py --voltage {' '.join(str(x) for x in voltages)}  --radius {radius} "
            f"--defect_probability {prob} --csv --quiet --converge"
            f"--steps 1000000 --seed {seed_int} --temp {temp}")
     commands.append(cmd)
