@@ -865,12 +865,15 @@ def run_voltage_sweep_simulation(
         voltages=np.arange(0.2, -1e-9, -0.01, ),
         steps=20000,
         visualize=True,
+        converge=False,
         quiet=False):
     """Run MODEL sweeping across VOLTAGES.
     For each voltage, hold up to STEPS or until MODEL stabilization.
     SEED is random seed.
     When VISUALIZE is True, visualize the model.
     When QUIET is True, avoid printing info.
+    When CONVERGE is False, run simulation for each voltage once.
+    Otherwise, CONVERGE should be a dict {'threshold': 0.01, 'max_runs': 50, 'min_runs': 3}
     """
     if visualize:
         fig, ((ax_grid, ax_stats), (voltage_axis, formation_axis)) = plt.subplots(2, 2, figsize=(10, 10))
@@ -879,13 +882,25 @@ def run_voltage_sweep_simulation(
     filling_data = []
     for voltage in voltages:
         model.voltage = voltage
-        run_simulation(
-            model,
-            steps=steps,
-            visualize=False,
-            snapshot_file=None,
-            quiet=quiet)
-        filling_data.append(np.mean(model.filling_history[-model.eq_window:-1]))
+        if converge:
+            tem = copy.deepcopy(model)
+            run_convergence_simulation(
+                tem, steps=steps,
+                convergence_threshold=converge['threshold'],
+                min_replicates=converge['min_runs'],
+                max_replicates=converge['max_runs'],
+                quiet=quiet,
+            )
+            model = tem
+        else:
+            run_simulation(
+                model,
+                steps=steps,
+                visualize=False,
+                snapshot_file=None,
+                csv_output=True,
+                quiet=quiet)
+        filling_data.append(model.get_final_filling_percent())
         if visualize:
             visualize_model(model, ax_grid, ax_stats, formation_axis=formation_axis)
             voltage_axis.clear()
