@@ -21,8 +21,8 @@ for prob, temp, radius in itertools.product(defect_probabilities, temperatures, 
     param_str = f"{prob:.3f}_{temp:.0f}_{radius}"
     seed = hashlib.md5(param_str.encode()).hexdigest()
     seed_int = int(seed[:8], 16)
-    cmd = (f"python mc-pore.py --voltage {' '.join(str(x) for x in voltages)}  --radius {radius} "
-           f"--defect_probability {prob} --csv --quiet --converge"
+    cmd = (f"python mc-pore.py --voltage {' '.join(str(x) for x in reversed(voltages))}  --radius {radius} "
+           f"--defect_probability {prob} --csv --quiet --converge "
            f"--steps 1000000 --seed {seed_int} --temp {temp}")
     commands.append(cmd)
 
