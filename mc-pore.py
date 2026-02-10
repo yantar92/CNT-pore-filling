@@ -110,18 +110,18 @@ class HardCarbonPoreModel:
         self.eq_min_mcs = eq_min_mcs  # minimum MCS before checking
         self.quiet = quiet
 
-        if not self.quiet:
-            print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
-            print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
-            print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
-            print(f"  Valid Sites: {len(self.valid_sites)}")
-            print(f"  Surface Sites: {len(self.surface_sites)}")
-            print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
-            n_defects = 0
-            for r, c in self.adjacent_wall_sites:
-                n_defects += 1 if self.grid[r, c] == self.DEFECT else 0
-            print(f"  Surface Carbons: {len(self.surface_sites)} ({n_defects} defects)")
-            print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
+        # if not self.quiet:
+        #     print(f"Model Initialized: {self.grid_width}x{self.grid_width} Grid")
+        #     print(f"  Temp: {self.T} K, Beta: {self.beta:.2f} eV^-1")
+        #     print(f"  Voltage: {self.voltage} V, Chem. pot: {-self.voltage} eV")
+        #     print(f"  Valid Sites: {len(self.valid_sites)}")
+        #     print(f"  Surface Sites: {len(self.surface_sites)}")
+        #     print(f"  Defects: {self.defect_probability:.3f} ({self.defect_placement})")
+        #     n_defects = 0
+        #     for r, c in self.adjacent_wall_sites:
+        #         n_defects += 1 if self.grid[r, c] == self.DEFECT else 0
+        #     print(f"  Surface Carbons: {len(self.surface_sites)} ({n_defects} defects)")
+        #     print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
 
     @property
     def mu(self):
@@ -755,7 +755,7 @@ def run_simulation(
             energy_na_na=-0.35,
             energy_na_c=-0.32,
             energy_na_defect=-1.77,
-            quiet=False,
+            quiet=True,
         ),
         steps=20000,
         visualize=True,
@@ -867,7 +867,7 @@ def run_voltage_sweep_simulation(
         visualize=True,
         converge=False,
         seed=None,
-        quiet=False):
+        quiet=True):
     """Run MODEL sweeping across VOLTAGES.
     For each voltage, hold up to STEPS or until MODEL stabilization.
     SEED is random seed.
@@ -932,7 +932,7 @@ def run_convergence_simulation(
             energy_na_na=-0.35,
             energy_na_c=-0.32,
             energy_na_defect=-1.77,
-            quiet=False,
+            quiet=True,
         ),
         steps=20000,
         convergence_threshold=0.01,
