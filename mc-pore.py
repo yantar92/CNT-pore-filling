@@ -846,7 +846,7 @@ def run_simulation(
             f"{model.energies['Na_C']:.6f}",
             f"{model.T:.1f}",
             f"{steps}",
-            str(seed) if seed is not None else '',
+            str(seed),
             f"{final_filling:.6f}",
             str(model.equilibrium_reached),
             f"{model.mcs:.2f}",
