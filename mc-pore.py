@@ -966,6 +966,15 @@ def run_convergence_simulation(
             time_mean = time_array.mean()
             time_std = time_array.std(ddof=1) if len(replicates) > 1 else 0.0
 
+            if np.isclose(fill_mean, 0):
+                fill_mean = 0
+            if np.isclose(fill_std, 0):
+                fill_std = 0
+            if np.isclose(time_mean, 0):
+                time_mean = 0
+            if np.isclose(time_std, 0):
+                time_std = 0
+
             # Compute relative changes (handle zero denominators)
             fill_mean_change = 0.0
             fill_std_change = 0.0
