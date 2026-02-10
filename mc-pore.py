@@ -866,6 +866,7 @@ def run_voltage_sweep_simulation(
         steps=20000,
         visualize=True,
         converge=False,
+        seed=None,
         quiet=False):
     """Run MODEL sweeping across VOLTAGES.
     For each voltage, hold up to STEPS or until MODEL stabilization.
@@ -875,6 +876,10 @@ def run_voltage_sweep_simulation(
     When CONVERGE is False, run simulation for each voltage once.
     Otherwise, CONVERGE should be a dict {'threshold': 0.01, 'max_runs': 50, 'min_runs': 3}
     """
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
     if visualize:
         fig, ((ax_grid, ax_stats), (voltage_axis, formation_axis)) = plt.subplots(2, 2, figsize=(10, 10))
         # dE_axis = ax_stats.twinx()
@@ -933,13 +938,17 @@ def run_convergence_simulation(
         convergence_threshold=0.01,
         min_replicates=3,
         max_replicates=50,
-        base_seed=None,
+        seed=None,
         quiet=False):
     """
     Run multiple simulations until statistics of final filling and pore filling time converge.
     Prints CSV line for each replicate.
     Returns list of (final_filling, mcs_fill) tuples.
     """
+    if seed is not None:
+        np.random.seed(seed)
+        random.seed(seed)
+
     replicates = []
     fill_means = []
     fill_stds = []
@@ -947,12 +956,6 @@ def run_convergence_simulation(
     time_stds = []
 
     for i in range(max_replicates):
-        # Determine seed for this replicate
-        if base_seed is not None:
-            seed = base_seed + i
-        else:
-            seed = None
-
         # Run simulation with csv_output=True (prints CSV line)
         model_tem = copy.deepcopy(model)
         model_tem.quiet = quiet
@@ -962,7 +965,7 @@ def run_convergence_simulation(
             visualize=False,
             snapshot_file=None,
             csv_output=True,
-            seed=seed,
+            seed=None,
             quiet=quiet)
 
         # Extract results
@@ -1212,7 +1215,7 @@ def main():
             convergence_threshold=args.convergence_threshold,
             min_replicates=args.min_replicates,
             max_replicates=args.max_replicates,
-            base_seed=args.seed,
+            seed=args.seed,
             quiet=args.quiet)
     else:
         run_simulation(
