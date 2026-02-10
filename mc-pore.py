@@ -419,6 +419,52 @@ class HardCarbonPoreModel:
         y = sqrt3_half * (r - center_r)
         return x, y
 
+    def __repr__(self):
+        """Brief representation of model state."""
+        filled = np.sum(self.grid == self.NA)
+        total = len(self.valid_sites)
+        if total == 0:
+            frac = 0.0
+        else:
+            frac = filled / total
+        return (f"HardCarbonPoreModel(R={self.pore_radius:.1f}Å, "
+                f"V={self.voltage:.2f}V, T={self.T}K, "
+                f"filling={filled}/{total}={frac:.1%}, "
+                f"MCS={self.mcs:.1f})")
+
+    def __str__(self):
+        """Detailed summary of model state."""
+        filled = np.sum(self.grid == self.NA)
+        total = len(self.valid_sites)
+        if total == 0:
+            frac = 0.0
+        else:
+            frac = filled / total
+        lines = [
+            "Hard Carbon Pore Model",
+            "======================",
+            f"Pore radius: {self.pore_radius} Å (lattice units: {self.radius_lattice_units:.2f})",
+            f"Grid: {self.grid_width}x{self.grid_width}",
+            f"Valid sites: {total}, Surface sites: {len(self.surface_sites)}",
+            f"Defects: {self.defect_probability:.3f} ({self.defect_placement}), "
+                f"Na-defect energy: {self.energies['Na_Defect']:.3f} eV",
+            f"Temperature: {self.T} K, Beta: {self.beta:.2f} eV^-1",
+            f"Voltage: {self.voltage} V, Chemical potential mu: {self.mu:.3f} eV",
+            f"Interaction energies: Na-Na {self.energies['Na_Na']:.3f} eV, "
+                f"Na-C {self.energies['Na_C']:.3f} eV",
+            f"Default P_GCMC: {self.default_p_gcmc:.4f}",
+            f"Current filling: {filled}/{total} ({frac:.1%})",
+            f"Monte Carlo steps: {self.mcs:.1f} (steps={self.steps})",
+            f"Equilibrium reached: {self.equilibrium_reached}",
+        ]
+        if self.mcs_fill is not None:
+            lines.append(f"Pore filled at MCS: {self.mcs_fill:.1f}")
+        return "\n".join(lines)
+
+    def pretty_print(self, file=sys.stdout):
+        """Print detailed summary of model state to FILE (default stdout)."""
+        print(str(self), file=file)
+
     def take_snapshot(self):
         """Return a deep copy of the current model state."""
         return copy.deepcopy(self)
