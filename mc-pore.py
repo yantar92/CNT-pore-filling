@@ -2,7 +2,7 @@
 Metropolis Monte Carlo Simulation for Hard Carbon Pore Filling.
 
 Command line usage:
-    python mc-pore.py [--voltage 0.1] [--radius 10.0] [--file snapshots.pkl]
+    python mc-pore.py [--voltage 0.1 [0.1 ...]] [--radius 10.0] [--file snapshots.pkl]
         [--steps 20000] [--visualize] [--energy_na_defect -1.77]
         [--temp 298] [--defect_placement surface] [--defect_probability 0.174]
         [--csv] [--quiet] [--seed INT] [--converge] [--convergence_threshold 0.05]
@@ -1161,8 +1161,8 @@ def main():
     parser = argparse.ArgumentParser(
         description='Metropolis Monte Carlo simulation of pore filling in hard carbon.'
     )
-    parser.add_argument('--voltage', type=float, default=0.1,
-                        help='Voltage relative to bulk Na (V)')
+    parser.add_argument('--voltage', type=float, default=[0.1], nargs='*',
+                        help='Voltage relative to bulk Na (V); single value or multiple for sweep')
     parser.add_argument('--radius', type=float, default=10.0,
                         help='Pore radius (Å)')
     parser.add_argument('--file', type=str, default='snapshots.pkl',
@@ -1200,40 +1200,64 @@ def main():
                         help='Random seed for reproducibility')
     args = parser.parse_args()
 
+    # Normalize voltage to a list
+    if isinstance(args.voltage, list):
+        voltages = args.voltage
+    else:
+        voltages = [args.voltage]
+
+    # Prepare converge dict if converge flag is set
+    converge_dict = False
     if args.converge:
-        run_convergence_simulation(
-            HardCarbonPoreModel(
-                voltage=args.voltage,
-                temperature_k=args.temp,
-                pore_radius_angstrom=args.radius,
-                defect_placement=args.defect_placement,
-                defect_probability=args.defect_probability,
-                energy_na_na=args.energy_na_na,
-                energy_na_c=args.energy_na_c,
-                energy_na_defect=args.energy_na_defect),
+        converge_dict = {
+            'threshold': args.convergence_threshold,
+            'max_runs': args.max_replicates,
+            'min_runs': args.min_replicates
+        }
+
+    model = HardCarbonPoreModel(
+        voltage=voltages[0],
+        temperature_k=args.temp,
+        pore_radius_angstrom=args.radius,
+        defect_placement=args.defect_placement,
+        defect_probability=args.defect_probability,
+        energy_na_na=args.energy_na_na,
+        energy_na_c=args.energy_na_c,
+        energy_na_defect=args.energy_na_defect,
+        quiet=args.quiet
+        )
+
+    if len(voltages) == 1:
+        # Single voltage mode
+        if args.converge:
+            run_convergence_simulation(
+                model,
+                steps=args.steps,
+                convergence_threshold=args.convergence_threshold,
+                min_replicates=args.min_replicates,
+                max_replicates=args.max_replicates,
+                seed=args.seed,
+                quiet=args.quiet)
+        else:
+            run_simulation(
+                model,
+                visualize=args.visualize,
+                snapshot_file=args.file,
+                steps=args.steps,
+                csv_output=args.csv,
+                quiet=args.quiet,
+                seed=args.seed)
+    else:
+        # Multiple voltages: run voltage sweep
+        # Create base model with first voltage (will be overwritten)
+        run_voltage_sweep_simulation(
+            model,
+            voltages=voltages,
             steps=args.steps,
-            convergence_threshold=args.convergence_threshold,
-            min_replicates=args.min_replicates,
-            max_replicates=args.max_replicates,
+            visualize=args.visualize,
+            converge=converge_dict,
             seed=args.seed,
             quiet=args.quiet)
-    else:
-        run_simulation(
-            HardCarbonPoreModel(
-                voltage=args.voltage,
-                temperature_k=args.temp,
-                pore_radius_angstrom=args.radius,
-                defect_placement=args.defect_placement,
-                defect_probability=args.defect_probability,
-                energy_na_na=args.energy_na_na,
-                energy_na_c=args.energy_na_c,
-                energy_na_defect=args.energy_na_defect),
-            visualize=args.visualize,
-            snapshot_file=args.file,
-            steps=args.steps,
-            csv_output=args.csv,
-            quiet=args.quiet,
-            seed=args.seed)
 
 
 def plot_filled_pore_energy():
