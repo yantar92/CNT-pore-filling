@@ -360,6 +360,15 @@ class HardCarbonPoreModel:
         filled = np.sum(self.grid == self.NA)
         return filled / total_valid
 
+    def get_final_filling_percent(self):
+        """Return average filling ratio, in %.
+        """
+        if self.filling_history is None:
+            return 0
+        if len(self.filling_history) < self.eq_window:
+            return np.mean(self.filling_history)
+        return np.mean(self.filling_history[-self.eq_window:-1])
+
     @property
     def mcs(self) -> float:
         """Number of normalized MC steps.
@@ -826,7 +835,7 @@ def run_simulation(
 
     # CSV output
     if csv_output:
-        final_filling = model.filling_history[-1] if model.filling_history else 0.0
+        final_filling = model.get_final_filling_percent()
         row = [
             f"{model.voltage:.6f}",
             f"{model.pore_radius:.1f}",
@@ -942,8 +951,8 @@ def run_convergence_simulation(
             quiet=quiet)
 
         # Extract results
-        final_filling = model_tem.filling_history[-1] if model_tem.filling_history else 0.0
-        mcs_fill = model_tem.mcs_fill if model_tem.mcs_fill is not None else model_tem.mcs
+        final_filling = model_tem.get_final_filling_percent()
+        mcs_fill = model_tem.mcs_fill if model_tem.mcs_fill is not None else 0.0
 
         replicates.append((final_filling, mcs_fill))
 
@@ -1087,7 +1096,7 @@ def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
                 'energy_na_na_eV': model.energies['Na_Na'],
                 'energy_na_c_eV': model.energies['Na_C'],
                 'energy_na_defect_eV': model.energies['Na_Defect'],
-                'final_filling': model.filling_history[-1] if model.filling_history else 0.0,
+                'final_filling': model.get_final_filling_percent(),
                 'final_mcs': model.mcs,
                 # 'equilibrium_reached': model.equilibrium_reached,
                 'n_snapshots': len(snapshots),
