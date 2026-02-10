@@ -22,7 +22,7 @@ import pandas as pd
 class HardCarbonPoreModel:
     def __init__(
             self,
-            pore_radius_angstrom=7.0,
+            pore_radius_angstrom=15,
             # 3.72A experimental
             # 3.59346 optB88-vdW from our data
             na_bond_length_angstrom=3.59346,
@@ -654,7 +654,7 @@ def visualize_model(model, ax_grid, ax_stats, dE_axis=None, formation_axis=None)
     if formation_axis is not None:
         formation_axis.clear()
         formation_axis.set_title("Formation energy history")
-        formation_axis.plot(model.time_points[10:], model.formation_energy_history[10:], label='Formation energy', color='red')
+        formation_axis.plot(model.time_points[10::5], model.formation_energy_history[10::5], label='Formation energy', color='red')
         formation_axis.set_ylabel('Formation energy, eV/atom')
     if dE_axis is not None:
         legend_axis = dE_axis
@@ -664,8 +664,8 @@ def visualize_model(model, ax_grid, ax_stats, dE_axis=None, formation_axis=None)
         # dE_axis.yaxis.set_label_position('right')
         window = 5
         window_entry = int(window * (1.0 - model.default_p_gcmc)/model.default_p_gcmc)
-        dE_axis.plot(model.fine_time_points_entry, pd.DataFrame(model.dE_history_entry).rolling(window_entry).mean(), color='green', label='dE entry')
-        dE_axis.plot(model.fine_time_points_exit, pd.DataFrame(model.dE_history_exit).rolling(window).mean(), color='red', label='dE exit')
+        dE_axis.plot(model.fine_time_points_entry[::5], pd.DataFrame(model.dE_history_entry).rolling(window_entry).mean()[::5], color='green', label='dE entry')
+        dE_axis.plot(model.fine_time_points_exit[::5], pd.DataFrame(model.dE_history_exit).rolling(window).mean()[::5], color='red', label='dE exit')
         dE_axis.legend()
         # lines2, labels2 = dE_axis.get_legend_handles_labels()
 
@@ -728,7 +728,9 @@ def run_simulation(
 
     # Initialize Model
     model.quiet = quiet
+    model.equilibrium_reached = False
     snapshots = []
+    BEGIN_MC = model.mcs
 
     total_sites = len(model.valid_sites)
     total_attempts = MC_STEPS * total_sites
@@ -745,6 +747,8 @@ def run_simulation(
 
     for attempt in range(total_attempts):
         model.run_step()
+        if model.equilibrium_reached and attempt < model.eq_min_mcs:
+            model.equilibrium_reached = False
 
         should_report = (model.equilibrium_reached
                          or attempt == total_attempts - 1
@@ -756,8 +760,8 @@ def run_simulation(
             if not quiet and model.equilibrium_reached:
                 print(f"Equilibrium reached at MCS {model.mcs:.2f}")
             elif not quiet:
-                print(f"  Step {int(model.mcs)}/{MC_STEPS}:"
-                      f" Filling = {model.filling_history[-1]:.2%}")
+                print(f"  Step {int(model.mcs)}/{MC_STEPS + BEGIN_MC}:"
+                      f" Filling = {model.filling_history[-1]:.2f}%")
             if not quiet and visualize:
                 visualize_model(model, ax_grid, ax_stats, dE_axis, formation_axis)
                 plt.draw()
@@ -799,6 +803,43 @@ def run_simulation(
         ]
         print(','.join(row))
     return model
+
+
+def run_voltage_sweep_simulation(
+        model=HardCarbonPoreModel(),
+        voltages=np.arange(0.2, -1e-9, -0.01, ),
+        steps=20000,
+        visualize=True,
+        quiet=False):
+    """Run MODEL sweeping across VOLTAGES.
+    For each voltage, hold up to STEPS or until MODEL stabilization.
+    SEED is random seed.
+    When VISUALIZE is True, visualize the model.
+    When QUIET is True, avoid printing info.
+    """
+    if visualize:
+        fig, ((ax_grid, ax_stats), (voltage_axis, formation_axis)) = plt.subplots(2, 2, figsize=(10, 10))
+        # dE_axis = ax_stats.twinx()
+        plt.show(block=False)
+    filling_data = []
+    for voltage in voltages:
+        model.voltage = voltage
+        run_simulation(
+            model,
+            steps=steps,
+            visualize=False,
+            snapshot_file=None,
+            quiet=quiet)
+        filling_data.append(np.mean(model.filling_history[-model.eq_window:-1]))
+        if visualize:
+            visualize_model(model, ax_grid, ax_stats, formation_axis=formation_axis)
+            voltage_axis.clear()
+            voltage_axis.set_title('CE profile')
+            voltage_axis.set_ylabel('Voltage, V')
+            voltage_axis.set_xlabel('Filling ratio, %')
+            voltage_axis.plot(filling_data, voltages[:len(filling_data)])
+            plt.draw()
+            plt.pause(0.01)
 
 
 def run_convergence_simulation(
