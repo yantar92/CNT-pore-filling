@@ -150,7 +150,16 @@ class HardCarbonPoreModel:
 
                 if dist >= radius:
                     self.wall_sites.append((r, c))
-
+                else:
+                    # IMPORTANT: Avoid sites inside pore adjacent to
+                    # more than 4 wall sites. That skews the energies.
+                    neighbors = self.get_neighbors(r, c, include_walls=True)
+                    n_wall = 0
+                    for nr, nc in neighbors:
+                        if distances[nr][nc] >= radius:
+                            n_wall += 1
+                    if n_wall > 4:
+                        self.wall_sites.append((n, c))
         self.adjacent_wall_sites = []
         for r, c in self.wall_sites:
             neighbors = self.get_neighbors(r, c, include_walls=True)
@@ -259,8 +268,12 @@ class HardCarbonPoreModel:
 
         return e_sum
 
-    def formation_energy(self):
+    def formation_energy(self, norm='Na'):
         """Calculate formation energy of the system.
+        NORM is normalization type. Allowed values:
+        'Na' - normalize by number of Na
+        'pore' - normalize by total number of sites inside the pore
+        None - do not normalize.
         """
         energy = 0
         tot_na = 0
@@ -277,8 +290,14 @@ class HardCarbonPoreModel:
                 elif self.grid[nr, nc] == self.DEFECT:
                     energy += self.energies['Na_Defect']
         if tot_na == 0:
-            return -self.mu
-        return energy/tot_na - self.mu
+            return 0
+        fenergy_abs = energy - self.mu*tot_na
+        if norm is None:
+            return fenergy_abs
+        elif norm == 'Na':
+            return (energy - self.mu*tot_na)/tot_na
+        # norm == 'pore'
+        return (energy - self.mu*tot_na)/len(self.valid_sites)
 
     def calculate_swap_energy(self, r1, c1, r2, c2):
         """Delta E for moving particle from (r1, c1) to (r2, c2)."""
@@ -1319,6 +1338,101 @@ def plot_filled_pore_energy():
     ax.grid()
     plt.show()
 
+def get_formation_energies(radius, defect_probability=0.058*3, norm='Na'):
+    """Get formation energy vs. concentration for pore with RADIUS.
+    Return (filling_ratios, energies).
+    """
+    model = HardCarbonPoreModel(
+        pore_radius_angstrom=radius,
+        temperature_k=298,
+        defect_probability=defect_probability,
+        energy_na_c=-0.32,
+        energy_na_na=-0.35,
+        energy_na_defect=-1.77,
+        # energy_na_defect=-0.77,
+        voltage=0)
+    filling_ratios = [0]
+    energies = [model.formation_energy(norm)]
+    for _ in range(len(model.valid_sites)):
+        min_energy = 1E100
+        min_loc = None
+        for r, c in model.valid_sites:
+            if model.grid[r, c] == model.EMPTY:
+                model.grid[r, c] = model.NA
+                new_energy = model.formation_energy(norm)
+                model.grid[r, c] = model.EMPTY
+                if new_energy < min_energy:
+                    min_energy = new_energy
+                    min_loc = (r, c)
+        assert min_loc is not None
+        model.grid[min_loc] = model.NA
+        filling_ratios.append(model.get_filling_fraction())
+        energies.append(model.formation_energy(norm))
+    save_model_svg(model, f'test_{radius}_{defect_probability}.svg')
+    return filling_ratios, energies
+
+def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability=0.058*3): # 
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    for radius in radii:
+        filling_ratios, energies = get_formation_energies(radius, defect_probability, norm='pore')
+        # deltas = []
+        prev_en = None
+        # for en in energies:
+        #     if prev_en is None:
+        #         deltas.append(0)
+        #         prev_en = en
+        #     else:
+        #         deltas.append(en - prev_en)
+        #         prev_en = en
+        ax.plot(filling_ratios, energies, 'o-', label=f'{radius}Å')
+    ax.set_xlabel('Filling ratio')
+    ax.set_ylabel('Formation energy, eV/atom')
+    ax.set_title(f'Formation energies of gradually filled pore (defects: {defect_probability})')
+    ax.legend()
+    ax.grid()
+    # plt.show()
+    name = f"formation_energy_vs_filling_{defect_probability:.2f}"
+    plt.savefig(f'{name}.svg')
+    plt.savefig(f'{name}.png')
+
+def plot_voltages(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability=0.058*3):
+    from pymatgen.entries.computed_entries import ComputedEntry
+    from pymatgen.apps.battery.insertion_battery import InsertionElectrode
+    from pymatgen.apps.battery.plotter import VoltageProfilePlotter
+    from pymatgen.core import Composition
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    for radius in radii:
+        filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=None)
+        voltages = []
+        entries = []
+        print(energies)
+        na_entry = ComputedEntry(Composition("Na"), 0)
+        na_entry.data["volume"] = 1
+        c_entry = ComputedEntry(Composition("C"), 0)
+        c_entry.data["volume"] = 1
+        entries.append(c_entry)
+        # entries.append(na_entry)
+        for n, e in enumerate(energies):
+            if n == 0:
+                continue
+            # print(f"Na{n}C")
+            entry = ComputedEntry(Composition(f"Na{n}C"), e)
+            entry.data["volume"] = 1
+            entries.append(entry)
+        electrode = InsertionElectrode.from_entries(
+            entries, working_ion_entry=na_entry, strip_structures=False)
+        plotter = VoltageProfilePlotter(xaxis='x_form')
+        x, voltage = plotter.get_plot_data(electrode, term_zero=False)
+        ax.plot(np.array(x) / (len(energies) - 1), voltage, 'o-', label=f'{radius}Å')
+    ax.set_xlabel('Filling ratio')
+    ax.set_ylabel('Voltage, V')
+    ax.set_title(f'Voltages for gradually filled pore (defects: {defect_probability})')
+    ax.legend()
+    ax.grid()
+    # plt.show()
+    name = f"voltage_{defect_probability:.2f}"
+    plt.savefig(f'{name}.svg')
+    plt.savefig(f'{name}.png')
 
 if __name__ == "__main__":
     main()
