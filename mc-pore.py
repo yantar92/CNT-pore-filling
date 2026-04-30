@@ -38,13 +38,17 @@ class HardCarbonPoreModel:
             eq_window=10000,
             eq_slope_threshold=1e-8,
             eq_min_mcs=10000,
-            quiet=False):
+            quiet=False,
+            seed=None):
         """
         Initialize 2D Triangular Lattice Model with Metropolis Dynamics.
 
         defect_placement: 'random' (Bernoulli per wall site) or
                           'surface' (exact fraction of pore‑surface wall sites).
         """
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
         # 1. Geometry Constants
         self.bond_length = na_bond_length_angstrom
         self.pore_radius = pore_radius_angstrom
@@ -1243,7 +1247,8 @@ def main():
         energy_na_na=args.energy_na_na,
         energy_na_c=args.energy_na_c,
         energy_na_defect=args.energy_na_defect,
-        quiet=args.quiet
+        quiet=args.quiet,
+        seed=args.seed
         )
 
     if len(voltages) == 1:
