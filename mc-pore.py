@@ -168,7 +168,7 @@ class HardCarbonPoreModel:
                         if distances[nr][nc] >= radius:
                             n_wall += 1
                     if n_wall > 4:
-                        self.wall_sites.append((n, c))
+                        self.wall_sites.append((r, c))
         self.adjacent_wall_sites = []
         for r, c in self.wall_sites:
             neighbors = self.get_neighbors(r, c, include_walls=True)
