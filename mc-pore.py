@@ -790,6 +790,7 @@ def run_simulation(
         snapshot_file: str | None = 'snapshots.pkl',
         csv_output=False,
         seed=None,
+        anneal0K=False,
         quiet=False):
     """
     Run a Monte Carlo simulation of pore filling.
@@ -832,6 +833,9 @@ def run_simulation(
         model.run_step()
         if model.equilibrium_reached and attempt < model.eq_min_mcs:
             model.equilibrium_reached = False
+
+        if model.equilibrium_reached and anneal0K:
+            model = run_0K_min(model, steps=steps)
 
         should_report = (model.equilibrium_reached
                          or attempt == total_attempts - 1
@@ -895,6 +899,7 @@ def run_voltage_sweep_simulation(
         visualize=True,
         converge=False,
         seed=None,
+        anneal0K=False,
         quiet=True):
     """Run MODEL sweeping across VOLTAGES.
     For each voltage, hold up to STEPS or until MODEL stabilization.
@@ -903,6 +908,7 @@ def run_voltage_sweep_simulation(
     When QUIET is True, avoid printing info.
     When CONVERGE is False, run simulation for each voltage once.
     Otherwise, CONVERGE should be a dict {'threshold': 0.01, 'max_runs': 50, 'min_runs': 3}
+    When ANNEAL0K is True, anneal at 0K after each step.
     """
     if seed is not None:
         random.seed(seed)
@@ -923,6 +929,7 @@ def run_voltage_sweep_simulation(
                 min_replicates=converge['min_runs'],
                 max_replicates=converge['max_runs'],
                 quiet=quiet,
+                anneal0K=anneal0K
             )
             model = tem
         else:
@@ -932,7 +939,9 @@ def run_voltage_sweep_simulation(
                 visualize=False,
                 snapshot_file=None,
                 csv_output=True,
+                anneal0K=anneal0K,
                 quiet=quiet)
+        save_model_svg(model, f"snapshot_{voltage}.svg")
         filling_data.append(model.get_final_filling_percent())
         if visualize:
             visualize_model(model, ax_grid, ax_stats, formation_axis=formation_axis)
@@ -967,6 +976,7 @@ def run_convergence_simulation(
         min_replicates=3,
         max_replicates=50,
         seed=None,
+        anneal0K=False,
         quiet=False):
     """
     Run multiple simulations until statistics of final filling and pore filling time converge.
@@ -994,6 +1004,7 @@ def run_convergence_simulation(
             snapshot_file=None,
             csv_output=True,
             seed=None,
+            anneal0K=anneal0K,
             quiet=quiet)
 
         # Extract results
@@ -1081,6 +1092,69 @@ def run_convergence_simulation(
             time_stds.append(time_std)
 
     return replicates
+
+
+def run_0K_min(
+        model=HardCarbonPoreModel(
+            pore_radius_angstrom=10.0,
+            temperature_k=0,
+            voltage=0.1,
+            # defect_probability=0.058,
+            # Defect density should be scaled by unknown factor to get 3d->2d mapping
+            # The carbons are placed on Na lattice, so the number of C is different
+            # here and thus need to adjust concentration.
+            # defect_probability=0.058 * 3,
+            defect_probability=0.058 * 3,
+            defect_placement='surface',
+            energy_na_na=-0.35,
+            energy_na_c=-0.32,
+            energy_na_defect=-1.77,
+            quiet=True,
+        ),
+        steps=20000,
+        seed=None):
+    """
+    Minimize energy in MODEL at 0K, while keeping the number of Na constant.
+
+    Args:
+        model: HardCarbonPoreModel
+        steps: Number of normalized Monte Carlo steps (MCS)
+        snapshot_file: If provided, save snapshots to this pickle file.
+        csv_output: If True, print a CSV line with results to stdout.
+        seed: Random seed for reproducibility (None for random).
+        quiet: Suppress progress output.
+    """
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+    MC_STEPS = steps  # Total normalized steps (attempts per site)
+
+    # Initialize Model
+    old_T = model.T
+    old_quiet = model.quiet
+    model.quiet = True
+
+    total_sites = len(model.valid_sites)
+    total_attempts = MC_STEPS * total_sites
+
+    # Down to 1K, we cannot use literally 0K.
+    for new_T in np.logspace(np.log10(old_T), np.log10(1), 5):
+        model.T = new_T
+        model.equilibrium_reached = False
+
+        for attempt in range(total_attempts):
+            # Run step, while disallowing Na exiting or entering.
+            model.run_step(p_gcmc=0)
+            if model.equilibrium_reached and attempt < model.eq_min_mcs:
+                model.equilibrium_reached = False
+            if model.equilibrium_reached:
+                break
+
+    model.quiet = old_quiet
+    model.T = old_T
+
+    return model
 
 
 def replay_simulation(snapshot_file, interval=0.01, every=1):
@@ -1224,6 +1298,8 @@ def main():
                         help='Output a single CSV line with final results')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress all progress output')
+    parser.add_argument('--anneal', action='store_true',
+                        help='Anneal the model at 0K after each step')
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility')
     args = parser.parse_args()
@@ -1266,6 +1342,7 @@ def main():
                 min_replicates=args.min_replicates,
                 max_replicates=args.max_replicates,
                 seed=args.seed,
+                anneal0K=args.anneal,
                 quiet=args.quiet)
         else:
             run_simulation(
@@ -1275,6 +1352,7 @@ def main():
                 steps=args.steps,
                 csv_output=args.csv,
                 quiet=args.quiet,
+                anneal0K=args.anneal,
                 seed=args.seed)
     else:
         # Multiple voltages: run voltage sweep
@@ -1285,6 +1363,7 @@ def main():
             steps=args.steps,
             visualize=args.visualize,
             converge=converge_dict,
+            anneal0K=args.anneal,
             seed=args.seed,
             quiet=args.quiet)
 
