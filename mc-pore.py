@@ -71,7 +71,6 @@ class HardCarbonPoreModel:
         # Boltzmann constant in eV/K
         self.kB = 8.617333262e-5
         self.T = temperature_k
-        self.beta = 1.0 / (self.kB * self.T)
         self.voltage = voltage
 
         # 4. State Grid Constants
@@ -126,6 +125,12 @@ class HardCarbonPoreModel:
         #         n_defects += 1 if self.grid[r, c] == self.DEFECT else 0
         #     print(f"  Surface Carbons: {len(self.surface_sites)} ({n_defects} defects)")
         #     print(f"  Default P_GCMC: {self.default_p_gcmc:.4f}")
+
+    @property
+    def beta(self) -> float:
+        """Return beta (1/kT).
+        """
+        return 1.0 / (self.kB * self.T)
 
     @property
     def mu(self):
