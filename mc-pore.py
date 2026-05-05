@@ -1439,7 +1439,7 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na'):
         voltage=0)
     filling_ratios = [0]
     energies = [model.formation_energy(norm)]
-    for _ in range(len(model.valid_sites)):
+    for idx in range(len(model.valid_sites)):
         min_energy = 1E100
         min_loc = None
         for r, c in model.valid_sites:
@@ -1455,7 +1455,7 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na'):
         # model = run_0K_min(model)
         filling_ratios.append(model.get_filling_fraction())
         energies.append(model.formation_energy(norm))
-    save_model_svg(model, f'test_{radius}_{defect_probability}.svg')
+        save_model_svg(model, f'test_{radius}_{defect_probability}_{idx}.svg')
     return filling_ratios, energies
 
 def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability=0.058*3): # 
