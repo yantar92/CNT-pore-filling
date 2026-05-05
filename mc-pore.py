@@ -1482,7 +1482,7 @@ def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability
     plt.savefig(f'{name}.svg')
     plt.savefig(f'{name}.png')
 
-def plot_voltages(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability=0.058*3):
+def plot_voltages(radii=[5, 7, 8, 10, 16, 20, 24, 30], defect_probability=0.058*3):
     from pymatgen.entries.computed_entries import ComputedEntry
     from pymatgen.apps.battery.insertion_battery import InsertionElectrode
     from pymatgen.apps.battery.plotter import VoltageProfilePlotter
