@@ -1138,18 +1138,15 @@ def run_0K_min(
     total_sites = len(model.valid_sites)
     total_attempts = MC_STEPS * total_sites
 
-    # Down to 1K, we cannot use literally 0K.
-    for new_T in np.logspace(np.log10(old_T), np.log10(1), 5):
-        model.T = new_T
-        model.equilibrium_reached = False
+    N_temps = 5
 
-        for attempt in range(total_attempts):
+    # Down to 1K, we cannot use literally 0K.
+    for new_T in np.logspace(np.log10(old_T), np.log10(1), N_temps):
+        model.T = new_T
+
+        for attempt in range(int(total_attempts/N_temps)):
             # Run step, while disallowing Na exiting or entering.
             model.run_step(p_gcmc=0)
-            if model.equilibrium_reached and attempt < model.eq_min_mcs:
-                model.equilibrium_reached = False
-            if model.equilibrium_reached:
-                break
 
     model.quiet = old_quiet
     model.T = old_T
@@ -1433,7 +1430,7 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na'):
     """
     model = HardCarbonPoreModel(
         pore_radius_angstrom=radius,
-        temperature_k=298,
+        temperature_k=4000,
         defect_probability=defect_probability,
         energy_na_c=-0.32,
         energy_na_na=-0.35,
@@ -1455,6 +1452,7 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na'):
                     min_loc = (r, c)
         assert min_loc is not None
         model.grid[min_loc] = model.NA
+        # model = run_0K_min(model)
         filling_ratios.append(model.get_filling_fraction())
         energies.append(model.formation_energy(norm))
     save_model_svg(model, f'test_{radius}_{defect_probability}.svg')
