@@ -17,6 +17,7 @@ import pickle
 import copy
 import argparse
 import sys
+import os
 import pandas as pd
 
 class HardCarbonPoreModel:
@@ -35,9 +36,9 @@ class HardCarbonPoreModel:
             energy_na_defect=-1.77,
             temperature_k=298.0,
             voltage=1.0,  # voltage relative to bulk Na
-            eq_window=10000,
+            eq_window=4000,
             eq_slope_threshold=1e-8,
-            eq_min_mcs=10000,
+            eq_min_mcs=5000,
             quiet=False,
             seed=None):
         """
@@ -798,7 +799,9 @@ def run_simulation(
     Args:
         model: HardCarbonPoreModel
         steps: Number of normalized Monte Carlo steps (MCS)
-        snapshot_file: If provided, save snapshots to this pickle file.
+        snapshot_file: If provided, save output to this file.
+            If the filename ends with '.csv', writes the time series
+            (MCS, filling %, formation energy) as CSV instead of pickle snapshots.
         csv_output: If True, print a CSV line with results to stdout.
         seed: Random seed for reproducibility (None for random).
         quiet: Suppress progress output.
@@ -806,6 +809,10 @@ def run_simulation(
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
+
+    # Determine output mode from filename extension
+    is_csv_output = (snapshot_file is not None
+                     and snapshot_file.lower().endswith('.csv'))
 
     MC_STEPS = steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
@@ -842,7 +849,8 @@ def run_simulation(
                          or attempt % (SNAPSHOT_INTERVAL * total_sites) == 0)
 
         if should_report:
-            if snapshot_file is not None:
+            # Collect snapshots only when writing pickle output
+            if snapshot_file is not None and not is_csv_output:
                 snapshots.append(model.take_snapshot())
             if not quiet and model.equilibrium_reached:
                 print(f"Equilibrium reached at MCS {model.mcs:.2f}")
@@ -859,11 +867,16 @@ def run_simulation(
     elapsed = time.time() - start_time
     if not quiet:
         print(f"Simulation Complete in {elapsed:.2f}s")
+
     if snapshot_file is not None:
-        with open(snapshot_file, 'wb') as f:
-            pickle.dump(snapshots, f)
-        if not quiet:
-            print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
+        if is_csv_output:
+            # Write time series as CSV instead of pickle snapshots
+            save_timeseries_csv(model, snapshot_file)
+        else:
+            with open(snapshot_file, 'wb') as f:
+                pickle.dump(snapshots, f)
+            if not quiet:
+                print(f"Saved {len(snapshots)} snapshots to {snapshot_file}")
 
     # CSV output
     if csv_output:
@@ -929,7 +942,8 @@ def run_voltage_sweep_simulation(
                 min_replicates=converge['min_runs'],
                 max_replicates=converge['max_runs'],
                 quiet=quiet,
-                anneal0K=anneal0K
+                anneal0K=anneal0K,
+                snapshot_file=None,
             )
             model = tem
         else:
@@ -977,10 +991,13 @@ def run_convergence_simulation(
         max_replicates=50,
         seed=None,
         anneal0K=False,
+        snapshot_file=None,
         quiet=False):
     """
     Run multiple simulations until statistics of final filling and pore filling time converge.
     Prints CSV line for each replicate.
+    When SNAPSHOT_FILE is given, each replicate saves output using the file name
+    as base with replicate index suffix (e.g. data_r0.csv, data_r1.csv).
     Returns list of (final_filling, mcs_fill) tuples.
     """
     if seed is not None:
@@ -994,6 +1011,12 @@ def run_convergence_simulation(
     time_stds = []
 
     for i in range(max_replicates):
+        # Generate per-replicate filename if snapshot_file is given
+        rep_snapshot = None
+        if snapshot_file is not None:
+            base, ext = os.path.splitext(snapshot_file)
+            rep_snapshot = f"{base}_r{i}{ext}"
+
         # Run simulation with csv_output=True (prints CSV line)
         model_tem = copy.deepcopy(model)
         model_tem.quiet = quiet
@@ -1001,7 +1024,7 @@ def run_convergence_simulation(
             model=model_tem,
             steps=steps,
             visualize=False,
-            snapshot_file=None,
+            snapshot_file=rep_snapshot,
             csv_output=True,
             seed=None,
             anneal0K=anneal0K,
@@ -1253,8 +1276,45 @@ def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
 
 # Example usage:
 # run_simulation(snapshot_file='snapshots.pkl')
+# run_simulation(snapshot_file='data.csv')   # writes CSV time series instead
 # replay_simulation('snapshots.pkl')
 # summarize_snapshots("v2.snapshots.*.pkl", "summary.csv")
+
+
+def save_timeseries_csv(model, csv_path):
+    """Save simulation time series data to a CSV file.
+
+    The CSV contains columns: mcs, filling_pct, formation_energy.
+    A companion *_events.csv file contains individual insertion
+    and removal events with their energy changes.
+    """
+    data = {
+        'mcs': model.time_points,
+        'filling_pct': model.filling_history,
+        'formation_energy': model.formation_energy_history,
+    }
+    df = pd.DataFrame(data)
+    df.to_csv(csv_path, index=False)
+    if not model.quiet:
+        print(f"Saved time series to {csv_path}")
+
+    # Events data
+    base, _ = os.path.splitext(csv_path)
+    events_path = base + '_events.csv'
+
+    events = []
+    for mcs, dE in zip(model.fine_time_points_entry, model.dE_history_entry):
+        events.append({'mcs': mcs, 'type': 'entry', 'dE': dE})
+    for mcs, dE in zip(model.fine_time_points_exit, model.dE_history_exit):
+        events.append({'mcs': mcs, 'type': 'exit', 'dE': dE})
+
+    if events:
+        df_events = pd.DataFrame(events)
+        df_events = df_events.sort_values('mcs')
+        df_events.to_csv(events_path, index=False)
+        if not model.quiet:
+            print(f"Saved event data to {events_path}")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1265,7 +1325,9 @@ def main():
     parser.add_argument('--radius', type=float, default=10.0,
                         help='Pore radius (Å)')
     parser.add_argument('--file', type=str, default='snapshots.pkl',
-                        help='Output snapshot pickle file')
+                        help='Output file. If the filename ends with .csv, writes time series'
+                        ' CSV (and _events.csv) instead of pickle snapshots.'
+                        ' In convergence mode, appends _rN suffix per replicate.')
     parser.add_argument('--steps', type=int, default=1000000,
                         help='Number of normalized Monte Carlo steps (MCS)')
     parser.add_argument('--visualize', action='store_true',
@@ -1340,6 +1402,7 @@ def main():
                 max_replicates=args.max_replicates,
                 seed=args.seed,
                 anneal0K=args.anneal,
+                snapshot_file=args.file,
                 quiet=args.quiet)
         else:
             run_simulation(
