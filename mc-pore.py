@@ -1285,8 +1285,6 @@ def save_timeseries_csv(model, csv_path):
     """Save simulation time series data to a CSV file.
 
     The CSV contains columns: mcs, filling_pct, formation_energy.
-    A companion *_events.csv file contains individual insertion
-    and removal events with their energy changes.
     """
     data = {
         'mcs': model.time_points,
@@ -1299,21 +1297,21 @@ def save_timeseries_csv(model, csv_path):
         print(f"Saved time series to {csv_path}")
 
     # Events data
-    base, _ = os.path.splitext(csv_path)
-    events_path = base + '_events.csv'
+    # base, _ = os.path.splitext(csv_path)
+    # events_path = base + '_events.csv'
 
-    events = []
-    for mcs, dE in zip(model.fine_time_points_entry, model.dE_history_entry):
-        events.append({'mcs': mcs, 'type': 'entry', 'dE': dE})
-    for mcs, dE in zip(model.fine_time_points_exit, model.dE_history_exit):
-        events.append({'mcs': mcs, 'type': 'exit', 'dE': dE})
+    # events = []
+    # for mcs, dE in zip(model.fine_time_points_entry, model.dE_history_entry):
+    #     events.append({'mcs': mcs, 'type': 'entry', 'dE': dE})
+    # for mcs, dE in zip(model.fine_time_points_exit, model.dE_history_exit):
+    #     events.append({'mcs': mcs, 'type': 'exit', 'dE': dE})
 
-    if events:
-        df_events = pd.DataFrame(events)
-        df_events = df_events.sort_values('mcs')
-        df_events.to_csv(events_path, index=False)
-        if not model.quiet:
-            print(f"Saved event data to {events_path}")
+    # if events:
+    #     df_events = pd.DataFrame(events)
+    #     df_events = df_events.sort_values('mcs')
+    #     df_events.to_csv(events_path, index=False)
+    #     if not model.quiet:
+    #         print(f"Saved event data to {events_path}")
 
 
 def main():
@@ -1326,7 +1324,7 @@ def main():
                         help='Pore radius (Å)')
     parser.add_argument('--file', type=str, default='snapshots.pkl',
                         help='Output file. If the filename ends with .csv, writes time series'
-                        ' CSV (and _events.csv) instead of pickle snapshots.'
+                        ' CSV instead of pickle snapshots.'
                         ' In convergence mode, appends _rN suffix per replicate.')
     parser.add_argument('--steps', type=int, default=1000000,
                         help='Number of normalized Monte Carlo steps (MCS)')
