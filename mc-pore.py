@@ -20,6 +20,9 @@ import sys
 import os
 import pandas as pd
 
+# Module-level constants
+CSV_GZ_SUFFIX = '.csv.gz'
+
 class HardCarbonPoreModel:
     def __init__(
             self,
@@ -800,8 +803,9 @@ def run_simulation(
         model: HardCarbonPoreModel
         steps: Number of normalized Monte Carlo steps (MCS)
         snapshot_file: If provided, save output to this file.
-            If the filename ends with '.csv', writes the time series
-            (MCS, filling %, formation energy) as CSV instead of pickle snapshots.
+            If the filename ends with '.csv' or '.csv.gz', writes the time series
+            (MCS, filling %, formation energy) as CSV (optionally gzip-compressed)
+            instead of pickle snapshots.
         csv_output: If True, print a CSV line with results to stdout.
         seed: Random seed for reproducibility (None for random).
         quiet: Suppress progress output.
@@ -812,7 +816,8 @@ def run_simulation(
 
     # Determine output mode from filename extension
     is_csv_output = (snapshot_file is not None
-                     and snapshot_file.lower().endswith('.csv'))
+                     and (snapshot_file.lower().endswith('.csv')
+                          or snapshot_file.lower().endswith(CSV_GZ_SUFFIX)))
 
     MC_STEPS = steps  # Total normalized steps (attempts per site)
     SNAPSHOT_INTERVAL = 400
@@ -1014,7 +1019,11 @@ def run_convergence_simulation(
         # Generate per-replicate filename if snapshot_file is given
         rep_snapshot = None
         if snapshot_file is not None:
-            base, ext = os.path.splitext(snapshot_file)
+            if snapshot_file.endswith(CSV_GZ_SUFFIX):
+                base = snapshot_file[:-len(CSV_GZ_SUFFIX)]
+                ext = CSV_GZ_SUFFIX
+            else:
+                base, ext = os.path.splitext(snapshot_file)
             rep_snapshot = f"{base}_r{i}{ext}"
 
         # Run simulation with csv_output=True (prints CSV line)
@@ -1276,7 +1285,8 @@ def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
 
 # Example usage:
 # run_simulation(snapshot_file='snapshots.pkl')
-# run_simulation(snapshot_file='data.csv')   # writes CSV time series instead
+# run_simulation(snapshot_file='data.csv')      # writes CSV time series
+# run_simulation(snapshot_file='data.csv.gz')   # writes gzip-compressed CSV time series
 # replay_simulation('snapshots.pkl')
 # summarize_snapshots("v2.snapshots.*.pkl", "summary.csv")
 
@@ -1285,6 +1295,7 @@ def save_timeseries_csv(model, csv_path):
     """Save simulation time series data to a CSV file.
 
     The CSV contains columns: mcs, filling_pct, formation_energy.
+    If csv_path ends with '.csv.gz', writes gzip-compressed CSV.
     """
     data = {
         'mcs': model.time_points,
@@ -1292,7 +1303,8 @@ def save_timeseries_csv(model, csv_path):
         'formation_energy': model.formation_energy_history,
     }
     df = pd.DataFrame(data)
-    df.to_csv(csv_path, index=False)
+    compression = 'gzip' if csv_path.endswith(CSV_GZ_SUFFIX) else None
+    df.to_csv(csv_path, index=False, compression=compression)
     if not model.quiet:
         print(f"Saved time series to {csv_path}")
 
