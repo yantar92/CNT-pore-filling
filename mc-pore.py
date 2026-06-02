@@ -1497,9 +1497,10 @@ def plot_filled_pore_energy():
     ax.grid()
     plt.show()
 
-def get_formation_energies(radius, defect_probability=0.058*3, norm='Na'):
+def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=False):
     """Get formation energy vs. concentration for pore with RADIUS.
     Return (filling_ratios, energies).
+    Unless QUIET is True, save snapshots of the pore for each concentration.
     """
     model = HardCarbonPoreModel(
         pore_radius_angstrom=radius,
@@ -1528,13 +1529,14 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na'):
         # model = run_0K_min(model)
         filling_ratios.append(model.get_filling_fraction())
         energies.append(model.formation_energy(norm))
-        save_model_svg(model, f'test_{radius}_{defect_probability}_{idx}.svg')
+        if not quiet:
+            save_model_svg(model, f'test_{radius}_{defect_probability:.3f}_{idx}.svg')
     return filling_ratios, energies
 
-def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability=0.058*3): # 
+def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability=0.058*3, norm='pore'): # 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     for radius in radii:
-        filling_ratios, energies = get_formation_energies(radius, defect_probability, norm='pore')
+        filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=norm, quiet=True)
         # deltas = []
         prev_en = None
         # for en in energies:
@@ -1546,7 +1548,12 @@ def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability
         #         prev_en = en
         ax.plot(filling_ratios, energies, 'o-', label=f'{radius}Å')
     ax.set_xlabel('Filling ratio')
-    ax.set_ylabel('Formation energy, eV/atom')
+    if norm is None:
+        ax.set_ylabel('Formation energy, eV')
+    elif norm == 'pore':
+        ax.set_ylabel('Formation energy, eV/site')
+    else:
+        ax.set_ylabel('Formation energy, eV/atom')
     ax.set_title(f'Formation energies of gradually filled pore (defects: {defect_probability})')
     ax.legend()
     ax.grid()
@@ -1554,6 +1561,7 @@ def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability
     name = f"formation_energy_vs_filling_{defect_probability:.2f}"
     plt.savefig(f'{name}.svg')
     plt.savefig(f'{name}.png')
+
 
 def plot_voltages(radii=[5, 7, 8, 10, 16, 20, 24, 30], defect_probability=0.058*3):
     from pymatgen.entries.computed_entries import ComputedEntry
