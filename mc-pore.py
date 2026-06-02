@@ -1533,6 +1533,57 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=
             save_model_svg(model, f'test_{radius}_{defect_probability:.3f}_{idx}.svg')
     return filling_ratios, energies
 
+
+def plot_filling_barriers(defect_probabilities=[0, 0.015, 0.02, 0.03, 0.04, 0.05, 0.1, 0.058*3, 0.25], radii=np.arange(5, 30, 1)): 
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+
+    for defect_probability in defect_probabilities:
+        # Find maximum barrier for each radius
+        barriers = []
+        barriers_q1 = []
+        barriers_q3 = []
+        min_barrier = 0
+        radius_list = []
+        seen = []
+        print(defect_probability)
+        for radius in radii:
+            tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
+            n_sites = len(tem.valid_sites)
+            if n_sites in seen:
+                print(f"Skipping r={radius}")
+                continue
+            seen.append(n_sites)
+            # print(radius)
+            N_SAMPELS = 100
+            max_energies = []
+            for _ in range(N_SAMPELS):
+                filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=None, quiet=True)
+                energies = [e - x * energies[-1] - (1 - x) * energies[0]
+                            for x, e in zip(filling_ratios, energies)]
+                max_energies.append(max(energies))
+            max_en = np.median(max_energies)
+            max_en_q1 = np.quantile(max_energies, 0.25)
+            max_en_q3 = np.quantile(max_energies, 0.75)
+            max_en = max_en if max_en > min_barrier else 0
+            max_en_q1 = max_en_q1 if max_en_q1 > min_barrier else 0
+            max_en_q3 = max_en_q3 if max_en_q3 > min_barrier else 0
+            barriers.append(max_en)
+            barriers_q1.append(max_en_q1)
+            barriers_q3.append(max_en_q3)
+            radius_list.append(radius*2/10)
+        ax.plot(
+            radius_list, barriers,
+            'o-',
+            label=f'{defect_probability:.3f}')
+        ax.fill_between(radius_list, barriers_q1, barriers_q3, alpha=0.2)
+    ax.set_xlabel('Diameter, nm')
+    ax.set_ylabel('Maximum formation barrier, eV')
+    ax.legend()
+    name = "filling_barrier_vs_radius"
+    plt.savefig(f'{name}.svg')
+    plt.savefig(f'{name}.png')
+
+
 def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability=0.058*3, norm='pore'): # 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     for radius in radii:
