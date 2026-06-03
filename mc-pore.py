@@ -10,7 +10,9 @@ Command line usage:
 """
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+from multiprocessing import Pool
 import random
 import time
 import pickle
@@ -1534,8 +1536,40 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=
     return filling_ratios, energies
 
 
-def plot_filling_barriers(defect_probabilities=[0, 0.015, 0.02, 0.03, 0.04, 0.05, 0.1, 0.058*3, 0.25], radii=np.arange(5, 30, 1)): 
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+def plot_filling_barriers(defect_probabilities=[0, 0.015, 0.02, 0.03, 0.04, 0.05, 0.1, 0.058*3, 0.25], radii=np.arange(5, 25, 1)): 
+
+    a4_width = 4.13 * 2
+    width = a4_width * 1.12
+    height = width * 2 / 4
+    mpl.rcParams.update({
+        # "figure.figsize": (4.13, 3.10),   # half A4 width, 4:3 ratio
+        "figure.figsize": (width, height),
+        "figure.dpi": 300,
+        "savefig.dpi": 600,
+
+        "font.size": 13,
+        "axes.labelsize": 11,
+        "axes.titlesize": 13,
+        "legend.fontsize": 11,
+        "xtick.labelsize": 11,
+        "ytick.labelsize": 11,
+
+        "axes.linewidth": 0.8,
+        "xtick.major.width": 0.8,
+        "ytick.major.width": 0.8,
+        "xtick.minor.width": 0.6,
+        "ytick.minor.width": 0.6,
+
+        "lines.linewidth": 1.5,
+        "lines.markersize": 4.2,
+
+        "pdf.fonttype": 42,   # editable text in Illustrator
+        "ps.fonttype": 42,
+        "mathtext.default": "regular",
+    })
+
+
+    fig, ax = plt.subplots(1, 1)
 
     for defect_probability in defect_probabilities:
         # Find maximum barrier for each radius
@@ -1553,11 +1587,18 @@ def plot_filling_barriers(defect_probabilities=[0, 0.015, 0.02, 0.03, 0.04, 0.05
                 print(f"Skipping r={radius}")
                 continue
             seen.append(n_sites)
-            # print(radius)
             N_SAMPELS = 100
+            # max_energies = []
+            # for _ in range(N_SAMPELS):
+            #     filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=None, quiet=True)
+            #     energies = [e - x * energies[-1] - (1 - x) * energies[0]
+            #                 for x, e in zip(filling_ratios, energies)]
+            #     max_energies.append(max(energies))
+            with Pool() as pool:
+                args = [(radius, defect_probability, None, True) for _ in range(N_SAMPELS)]
+                results = pool.starmap(get_formation_energies, args)
             max_energies = []
-            for _ in range(N_SAMPELS):
-                filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=None, quiet=True)
+            for filling_ratios, energies in results:
                 energies = [e - x * energies[-1] - (1 - x) * energies[0]
                             for x, e in zip(filling_ratios, energies)]
                 max_energies.append(max(energies))
