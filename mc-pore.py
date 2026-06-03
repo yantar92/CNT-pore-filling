@@ -95,6 +95,9 @@ class HardCarbonPoreModel:
         self.surface_sites = [] # List of (r, c) adjacent to carbon
         self._classify_sites()
 
+        # 5a. Compute the real pore radius from the furthest valid site
+        self.real_radius_angstrom = self._compute_real_radius()
+
         # 6. Calculate default probabilities
         if len(self.valid_sites) > 0:
             self.default_p_gcmc = len(self.surface_sites) / len(self.valid_sites)
@@ -462,6 +465,26 @@ class HardCarbonPoreModel:
         y = sqrt3_half * (r - center_r)
         return x, y
 
+    def _compute_real_radius(self):
+        """Compute the actual pore radius from the furthest valid site.
+
+        Because of the discrete triangular grid, the user-specified
+        pore_radius does not necessarily correspond to a real pore
+        shape. This method finds the maximum distance from the pore
+        center among all valid (non-wall) sites and returns it in
+        angstroms.
+        """
+        if not self.valid_sites:
+            return 0.0
+        max_dist = 0.0
+        for r, c in self.valid_sites:
+            x, y = self.get_triangular_coordinates(r, c)
+            dist = np.sqrt(x**2 + y**2)
+            if dist > max_dist:
+                max_dist = dist
+        # Convert from lattice units to angstroms
+        return max_dist * self.bond_length
+
     def __repr__(self):
         """Brief representation of model state."""
         filled = np.sum(self.grid == self.NA)
@@ -487,6 +510,7 @@ class HardCarbonPoreModel:
             "Hard Carbon Pore Model",
             "======================",
             f"Pore radius: {self.pore_radius} Å (lattice units: {self.radius_lattice_units:.2f})",
+            f"Real pore radius: {self.real_radius_angstrom:.3f} Å (from furthest valid site)",
             f"Grid: {self.grid_width}x{self.grid_width}",
             f"Valid sites: {total}, Surface sites: {len(self.surface_sites)}",
             f"Defects: {self.defect_probability:.3f} ({self.defect_placement}), "
@@ -907,6 +931,7 @@ def run_simulation(
             f"{model.default_p_gcmc:.6f}",
             f"{model.mu:.6f}",
             f"{model.mcs_fill}",
+            f"{model.real_radius_angstrom:.6f}",
         ]
         print(','.join(row))
     return model
@@ -1265,6 +1290,7 @@ def summarize_snapshots(pattern="*.pkl", output_csv="summary.csv"):
                 'default_p_gcmc': model.default_p_gcmc,
                 'mu_eV': model.mu,
                 'fill_mcs': model.fill_mcs,
+                'real_radius_A': model.real_radius_angstrom,
             }
 
             data_rows.append(row)
