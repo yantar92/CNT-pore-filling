@@ -1562,11 +1562,11 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=
     return filling_ratios, energies
 
 
-def plot_filling_barriers(defect_probabilities=[0, 0.015, 0.02, 0.03, 0.04, 0.05, 0.1, 0.058*3, 0.25], radii=np.arange(5, 25, 1)): 
+def plot_filling_barriers(defect_probabilities=[0, 0.012, 0.015, 0.02, 0.03, 0.05, 0.1, 0.058*3, 0.25], radii=np.arange(5, 31, 1)): 
 
     a4_width = 4.13 * 2
     width = a4_width * 1.12
-    height = width * 2 / 4
+    height = width * 2 / 4 * 0.9
     mpl.rcParams.update({
         # "figure.figsize": (4.13, 3.10),   # half A4 width, 4:3 ratio
         "figure.figsize": (width, height),
@@ -1613,13 +1613,8 @@ def plot_filling_barriers(defect_probabilities=[0, 0.015, 0.02, 0.03, 0.04, 0.05
                 print(f"Skipping r={radius}")
                 continue
             seen.append(n_sites)
+            print(f"r={radius}")
             N_SAMPELS = 100
-            # max_energies = []
-            # for _ in range(N_SAMPELS):
-            #     filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=None, quiet=True)
-            #     energies = [e - x * energies[-1] - (1 - x) * energies[0]
-            #                 for x, e in zip(filling_ratios, energies)]
-            #     max_energies.append(max(energies))
             with Pool() as pool:
                 args = [(radius, defect_probability, None, True) for _ in range(N_SAMPELS)]
                 results = pool.starmap(get_formation_energies, args)
@@ -1637,7 +1632,8 @@ def plot_filling_barriers(defect_probabilities=[0, 0.015, 0.02, 0.03, 0.04, 0.05
             barriers.append(max_en)
             barriers_q1.append(max_en_q1)
             barriers_q3.append(max_en_q3)
-            radius_list.append(radius*2/10)
+            actual_radius = tem.real_radius_angstrom
+            radius_list.append(actual_radius*2/10)
         ax.plot(
             radius_list, barriers,
             'o-',
@@ -1674,6 +1670,8 @@ def plot_formation_energies(radii=[5, 6, 10, 16, 20, 24, 30], defect_probability
         ax.set_ylabel('Formation energy, eV/atom')
     ax.set_title(f'Formation energies of gradually filled pore (defects: {defect_probability})')
     ax.legend()
+    ax.set_xlim(0,0.2)
+    ax.set_ylim(-1,1)
     ax.grid()
     # plt.show()
     name = f"formation_energy_vs_filling_{defect_probability:.2f}"
