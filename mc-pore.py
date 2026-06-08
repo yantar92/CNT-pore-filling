@@ -1770,7 +1770,8 @@ def plot_voltages(radii=[5, 7, 8, 10, 16, 20, 24, 30], defect_probability=0.058*
     from pymatgen.core import Composition
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     for radius in radii:
-        filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=None)
+        tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
+        filling_ratios, energies = get_formation_energies(radius, defect_probability, norm=None, quiet=True)
         voltages = []
         entries = []
         print(energies)
@@ -1791,7 +1792,7 @@ def plot_voltages(radii=[5, 7, 8, 10, 16, 20, 24, 30], defect_probability=0.058*
             entries, working_ion_entry=na_entry, strip_structures=False)
         plotter = VoltageProfilePlotter(xaxis='x_form')
         x, voltage = plotter.get_plot_data(electrode, term_zero=False)
-        ax.plot(np.array(x) / (len(energies) - 1), voltage, 'o-', label=f'{radius}Å')
+        ax.plot(np.array(x) / (len(energies) - 1), voltage, 'o-', label=f'{tem.real_radius_angstrom}Å')
     ax.set_xlabel('Filling ratio')
     ax.set_ylabel('Voltage, V')
     ax.set_title(f'Voltages for gradually filled pore (defects: {defect_probability})')
@@ -1801,6 +1802,8 @@ def plot_voltages(radii=[5, 7, 8, 10, 16, 20, 24, 30], defect_probability=0.058*
     name = f"voltage_{defect_probability:.2f}"
     plt.savefig(f'{name}.svg')
     plt.savefig(f'{name}.png')
+
+
 
 if __name__ == "__main__":
     main()
