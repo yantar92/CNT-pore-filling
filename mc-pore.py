@@ -466,24 +466,24 @@ class HardCarbonPoreModel:
         return x, y
 
     def _compute_real_radius(self):
-        """Compute the actual pore radius from the furthest valid site.
+        """Compute the actual pore radius from the closest wall site.
 
         Because of the discrete triangular grid, the user-specified
         pore_radius does not necessarily correspond to a real pore
-        shape. This method finds the maximum distance from the pore
-        center among all valid (non-wall) sites and returns it in
+        shape. This method finds the minimum distance from the pore
+        center among all wall sites and returns it in
         angstroms.
         """
-        if not self.valid_sites:
+        if not self.adjacent_wall_sites:
             return 0.0
-        max_dist = 0.0
-        for r, c in self.valid_sites:
+        min_dist = 1E100
+        for r, c in self.adjacent_wall_sites:
             x, y = self.get_triangular_coordinates(r, c)
             dist = np.sqrt(x**2 + y**2)
-            if dist > max_dist:
-                max_dist = dist
+            if dist < min_dist:
+                min_dist = dist
         # Convert from lattice units to angstroms
-        return max_dist * self.bond_length
+        return min_dist * self.bond_length
 
     def __repr__(self):
         """Brief representation of model state."""
