@@ -45,7 +45,7 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=
         filling_ratios.append(model.get_filling_fraction())
         energies.append(model.formation_energy(norm))
         if not quiet:
-            save_model_svg(model, f'test_{radius}_{defect_probability:.3f}_{idx}.svg')
+            save_model_svg(model, f'test_{radius}_{defect_probability:.3f}_{idx:03d}.svg')
     return filling_ratios, energies
 
 
