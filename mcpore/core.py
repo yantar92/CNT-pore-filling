@@ -369,6 +369,29 @@ class HardCarbonPoreModel:
                 return True
         return False
 
+    def attempt_swap(self):
+        """Non-local Na hop: pick random Na, random empty site, Metropolis accept.
+
+        Symmetric proposal preserves detailed balance.  This move accelerates
+        equilibration across free-energy barriers (e.g. the surface ring) but
+        is not physically meaningful for time.  Use only when equilibrium
+        properties (filling fraction, voltage) are the goal.
+        """
+        na_sites = [(r, c) for r, c in self.valid_sites
+                    if self.grid[r, c] == self.NA]
+        empty_sites = [(r, c) for r, c in self.valid_sites
+                       if self.grid[r, c] == self.EMPTY]
+        if not na_sites or not empty_sites:
+            return False
+        r1, c1 = random.choice(na_sites)
+        r2, c2 = random.choice(empty_sites)
+        dE = self.calculate_swap_energy(r1, c1, r2, c2)
+        if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
+            self.grid[r1, c1] = self.EMPTY
+            self.grid[r2, c2] = self.NA
+            return True
+        return False
+
     def get_filling_fraction(self):
         total_valid = len(self.valid_sites)
         filled = np.sum(self.grid == self.NA)
@@ -387,16 +410,22 @@ class HardCarbonPoreModel:
         """Number of normalized MC steps."""
         return self.steps / len(self.valid_sites)
 
-    def run_step(self, p_gcmc=None):
+    def run_step(self, p_gcmc=None, p_swap=0.0):
         """Executes one Monte Carlo Step (MCS).
 
         p_gcmc: Probability of attempting a GCMC move vs Diffusion move.
                 If None, defaults to ratio of surface sites to valid sites.
+        p_swap: Probability of attempting a non-local swap move.
+                Non-local swaps are a computational acceleration for
+                equilibration; they are not physical dynamics.
+                Use p_swap=0.0 when measuring kinetics/time.
         """
-        prob = p_gcmc if p_gcmc is not None else self.default_p_gcmc
+        prob_gcmc = p_gcmc if p_gcmc is not None else self.default_p_gcmc
 
-        if np.random.random() < prob:
+        if np.random.random() < prob_gcmc:
             self.attempt_gcmc()
+        elif np.random.random() < p_swap:
+            self.attempt_swap()
         else:
             self.attempt_diffusion()
 

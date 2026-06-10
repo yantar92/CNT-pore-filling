@@ -36,6 +36,7 @@ def run_simulation(
         csv_output=False,
         seed=None,
         anneal0K=False,
+        p_swap=0.0,
         quiet=False):
     """Run a Monte Carlo simulation of pore filling.
 
@@ -48,6 +49,8 @@ def run_simulation(
             instead of pickle snapshots.
         csv_output: If True, print a CSV line with results to stdout.
         seed: Random seed for reproducibility (None for random).
+        p_swap: Probability of non-local swap moves (0 disables).
+            Use p_swap > 0 for equilibration; use p_swap = 0 for kinetics.
         quiet: Suppress progress output.
     """
     if seed is not None:
@@ -82,7 +85,7 @@ def run_simulation(
         plt.show(block=False)
 
     for attempt in range(total_attempts):
-        model.run_step()
+        model.run_step(p_swap=p_swap)
         if model.equilibrium_reached and attempt < model.eq_min_mcs:
             model.equilibrium_reached = False
 
@@ -159,6 +162,7 @@ def run_voltage_sweep_simulation(
         converge=False,
         seed=None,
         anneal0K=False,
+        p_swap=0.0,
         quiet=True):
     """Run MODEL sweeping across VOLTAGES.
 
@@ -169,6 +173,8 @@ def run_voltage_sweep_simulation(
     When CONVERGE is False, run simulation for each voltage once.
     Otherwise, CONVERGE should be a dict {'threshold': 0.01, 'max_runs': 50, 'min_runs': 3}
     When ANNEAL0K is True, anneal at 0K after each step.
+    p_swap: Probability of non-local swap moves (0 disables).
+        Recommended 0.15 for voltage sweeps to cross the surface ring barrier.
     """
     if seed is not None:
         random.seed(seed)
@@ -190,6 +196,7 @@ def run_voltage_sweep_simulation(
                 max_replicates=converge['max_runs'],
                 quiet=quiet,
                 anneal0K=anneal0K,
+                p_swap=p_swap,
                 snapshot_file=None,
             )
             model = tem
@@ -201,6 +208,7 @@ def run_voltage_sweep_simulation(
                 snapshot_file=None,
                 csv_output=True,
                 anneal0K=anneal0K,
+                p_swap=p_swap,
                 quiet=quiet)
         save_model_svg(model, f"snapshot_{voltage}.svg")
         filling_data.append(model.get_final_filling_percent())
@@ -233,6 +241,7 @@ def run_convergence_simulation(
         max_replicates=50,
         seed=None,
         anneal0K=False,
+        p_swap=0.0,
         snapshot_file=None,
         quiet=False):
     """Run multiple simulations until statistics converge.
@@ -273,6 +282,7 @@ def run_convergence_simulation(
             csv_output=True,
             seed=None,
             anneal0K=anneal0K,
+            p_swap=p_swap,
             quiet=quiet)
 
         # Extract results
@@ -405,7 +415,7 @@ def run_0K_min(
 
         for attempt in range(int(total_attempts/N_temps)):
             # Run step, while disallowing Na exiting or entering.
-            model.run_step(p_gcmc=0)
+            model.run_step(p_gcmc=0, p_swap=0)
 
     model.quiet = old_quiet
     model.T = old_T

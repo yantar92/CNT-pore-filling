@@ -61,6 +61,10 @@ def main():
                         help='Anneal the model at 0K after each step')
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility')
+    parser.add_argument('--p_swap', type=float, default=0.0,
+                        help='Probability of non-local swap moves. '
+                        'Use >0 (e.g. 0.15) for voltage sweeps/equilibration; '
+                        'use 0 for kinetics (default: 0)')
     args = parser.parse_args()
 
     # Normalize voltage to a list
@@ -102,6 +106,7 @@ def main():
                 max_replicates=args.max_replicates,
                 seed=args.seed,
                 anneal0K=args.anneal,
+                p_swap=args.p_swap,
                 snapshot_file=args.file,
                 quiet=args.quiet)
         else:
@@ -113,6 +118,7 @@ def main():
                 csv_output=args.csv,
                 quiet=args.quiet,
                 anneal0K=args.anneal,
+                p_swap=args.p_swap,
                 seed=args.seed)
     else:
         # Multiple voltages: run voltage sweep
@@ -123,6 +129,7 @@ def main():
             visualize=args.visualize,
             converge=converge_dict,
             anneal0K=args.anneal,
+            p_swap=args.p_swap,
             seed=args.seed,
             quiet=args.quiet)
 
