@@ -26,8 +26,8 @@ class HardCarbonPoreModel:
             defect_placement='surface',  # 'random' or 'surface'
             # Interaction Energies (eV)
             energy_na_na=-0.35,
-            energy_na_c=-0.32,
-            energy_na_defect=-1.77,
+            energy_na_c=-0.26,
+            energy_na_defect=-1.53,
             temperature_k=298.0,
             voltage=1.0,  # voltage relative to bulk Na
             eq_window=4000,

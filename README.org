@@ -38,7 +38,7 @@ All scripts are standalone and can be placed in the same directory.
 ** Quick start: running a single simulation
   #+begin_src bash
   python mc‑pore.py --voltage 0.1 --radius 10.0 --defect_probability 0.174 \
-		    --energy_na_defect -1.77 --steps 1000000 --csv --quiet --seed 12345
+		    --energy_na_defect -1.53 --steps 1000000 --csv --quiet --seed 12345
   #+end_src
 
   This will output a single CSV line to stdout containing all simulation parameters and the final filling fraction. To see live visualisation, omit =--csv= and =--quiet= and add =--visualize=.

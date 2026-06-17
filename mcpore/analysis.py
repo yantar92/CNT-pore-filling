@@ -23,9 +23,6 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=
         pore_radius_angstrom=radius,
         temperature_k=4000,
         defect_probability=defect_probability,
-        energy_na_c=-0.32,
-        energy_na_na=-0.35,
-        energy_na_defect=-1.77,
         voltage=0)
     filling_ratios = [0]
     energies = [model.formation_energy(norm)]

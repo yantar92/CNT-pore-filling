@@ -32,11 +32,11 @@ def main():
                         help='Number of normalized Monte Carlo steps (MCS)')
     parser.add_argument('--visualize', action='store_true',
                         help='Enable live visualization')
-    parser.add_argument('--energy_na_defect', type=float, default=-1.77,
+    parser.add_argument('--energy_na_defect', type=float, default=-1.53,
                         help='Na-defect interaction energy (eV)')
     parser.add_argument('--energy_na_na', type=float, default=-0.35,
                         help='Na-Na interaction energy (eV)')
-    parser.add_argument('--energy_na_c', type=float, default=-0.32,
+    parser.add_argument('--energy_na_c', type=float, default=-0.26,
                         help='Na-C interaction energy (eV)')
     parser.add_argument('--temp', type=float, default=298.0,
                         help='Temperature (K)')
