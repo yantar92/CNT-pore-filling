@@ -29,6 +29,7 @@ dependencies = [
     "numpy",
     "matplotlib",
     "pandas",
+    "pymatgen",
 ]
 
 [project.optional-dependencies]
