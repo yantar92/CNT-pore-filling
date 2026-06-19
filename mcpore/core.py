@@ -55,6 +55,7 @@ class HardCarbonPoreModel:
         padding_lattice = int(grid_padding_angstrom / self.bond_length)
         pore_span_lattice = int(self.radius_lattice_units * 2)
         self.grid_width = pore_span_lattice + 2 * padding_lattice + 4
+        self.grid_width = int(1.1 * self.grid_width)
 
         # 3. Energetics & Thermodynamics
         self.energies = {
@@ -550,7 +551,9 @@ def save_model_svg(model, filename, scale=80):
     xs, ys = [], []
 
     # Visualization radius limit
-    vis_limit_lattice = model.radius_lattice_units + 1.8
+    vis_limit_lattice = min(
+        model.radius_lattice_units + 1.8,
+        model.radius_lattice_units * 1.1)
 
     for r in range(model.grid_width):
         for c in range(model.grid_width):
