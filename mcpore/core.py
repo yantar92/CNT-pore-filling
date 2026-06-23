@@ -30,6 +30,7 @@ class HardCarbonPoreModel:
             energy_na_defect=-1.53,
             temperature_k=298.0,
             voltage=1.0,  # voltage relative to bulk Na
+            initial_na_layers=0,  # pre-fill surface-adjacent layers with Na
             eq_window=4000,
             eq_slope_threshold=1e-8,
             eq_min_mcs=5000,
@@ -88,6 +89,10 @@ class HardCarbonPoreModel:
         # 5a. Compute the real pore radius from the furthest valid site
         self.real_radius_angstrom = self._compute_real_radius()
 
+        # 5b. Initialize Na surface layers (pre-fill from non-empty state)
+        self.initial_na_layers = initial_na_layers
+        self._initialize_na_layers(initial_na_layers)
+
         # 6. Calculate default probabilities
         if len(self.valid_sites) > 0:
             self.default_p_gcmc = len(self.surface_sites) / len(self.valid_sites)
@@ -96,10 +101,10 @@ class HardCarbonPoreModel:
 
         # 7. History
         self.steps = 0
-        self.mcs_fill = None
+        self.mcs_fill = 0.0 if self.get_filling_fraction() >= 0.9999 else None
         self.time_points = [0.0]
-        self.filling_history = [0.0]
-        self.formation_energy_history = [-self.mu]
+        self.filling_history = [self.get_filling_fraction() * 100]
+        self.formation_energy_history = [self.formation_energy()]
         self.fine_time_points_entry = []
         self.fine_time_points_exit = []
         self.dE_history_entry = []
@@ -213,6 +218,55 @@ class HardCarbonPoreModel:
                             break
                     if is_surface:
                         self.surface_sites.append((r, c))
+
+    def _compute_wall_distance(self):
+        """Compute distance in lattice hops from each valid site to nearest wall.
+
+        Uses BFS from surface sites (layer 0) outward through valid sites.
+        Returns a dict mapping (r, c) -> distance (int).
+        """
+        from collections import deque
+
+        distance = {}
+        queue = deque()
+
+        # Layer 0: sites directly adjacent to carbon/defect walls
+        for r, c in self.valid_sites:
+            neighbors = self.get_neighbors(r, c, include_walls=True)
+            for nr, nc in neighbors:
+                if self.grid[nr, nc] in (self.CARBON, self.DEFECT):
+                    distance[(r, c)] = 0
+                    queue.append((r, c))
+                    break
+
+        # BFS outward through valid (non-wall) sites
+        while queue:
+            r, c = queue.popleft()
+            for nr, nc in self.get_neighbors(r, c):
+                if (nr, nc) not in distance:
+                    distance[(nr, nc)] = distance[(r, c)] + 1
+                    queue.append((nr, nc))
+
+        return distance
+
+    def _initialize_na_layers(self, n_layers):
+        """Pre-fill the first N_LAYERS of wall-adjacent sites with Na atoms.
+
+        n_layers=0: empty pore (no change).
+        n_layers=1: fill surface sites (adjacent to wall).
+        n_layers=2: fill surface + first subsurface layer.
+        Returns the number of Na atoms placed.
+        """
+        if n_layers <= 0:
+            return 0
+
+        distance = self._compute_wall_distance()
+        count = 0
+        for (r, c), d in distance.items():
+            if d < n_layers:
+                self.grid[r, c] = self.NA
+                count += 1
+        return count
 
     def get_neighbors(self, r, c, include_walls=False):
         """Returns list of neighbor coords for triangular lattice.
@@ -785,6 +839,7 @@ def visualize_model(model, ax_grid, ax_stats, dE_axis=None, formation_axis=None)
         f"V = {model.voltage:.2f} V\n"
         f"R = {model.pore_radius} Å\n"
         f"defects = {model.defect_probability:.3f} ({model.defect_placement})\n"
+        f"initial Na layers = {model.initial_na_layers}\n"
         f"E_Na-Na = {model.energies['Na_Na']:.3f} eV\n"
         f"E_Na-C = {model.energies['Na_C']:.3f} eV\n"
         f"E_Na-def = {model.energies['Na_Defect']:.3f} eV")

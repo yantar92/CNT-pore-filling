@@ -65,6 +65,10 @@ def main():
                         help='Probability of non-local swap moves. '
                         'Use >0 (e.g. 0.15) for voltage sweeps/equilibration; '
                         'use 0 for kinetics (default: 0)')
+    parser.add_argument('--initial-na-layers', type=int, default=0,
+                        help='Number of wall-adjacent layers to pre-fill with Na '
+                        'at time=0. 0 = empty pore (default), '
+                        '1 = surface sites, 2+ = deeper layers.')
     args = parser.parse_args()
 
     # Normalize voltage to a list
@@ -91,6 +95,7 @@ def main():
         energy_na_na=args.energy_na_na,
         energy_na_c=args.energy_na_c,
         energy_na_defect=args.energy_na_defect,
+        initial_na_layers=args.initial_na_layers,
         quiet=args.quiet,
         seed=args.seed
     )
