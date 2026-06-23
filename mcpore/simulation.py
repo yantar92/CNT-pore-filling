@@ -104,6 +104,7 @@ def run_simulation(
                       f" Filling = {model.filling_history[-1]:.2f}%")
             if not quiet and visualize:
                 visualize_model(model, ax_grid, ax_stats, dE_axis, formation_axis)
+                save_model_svg(model, f"snapshot_{int(model.mcs):09d}.svg")
                 plt.draw()
                 plt.pause(0.01)
         if model.equilibrium_reached:
