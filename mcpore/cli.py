@@ -24,7 +24,7 @@ def main():
                         help='Voltage relative to bulk Na (V); single value or multiple for sweep')
     parser.add_argument('--radius', type=float, default=10.0,
                         help='Pore radius (Å)')
-    parser.add_argument('--file', type=str, default='snapshots.pkl',
+    parser.add_argument('--file', type=str, default=None,
                         help='Output file. If the filename ends with .csv, writes time series'
                         ' CSV instead of pickle snapshots.'
                         ' In convergence mode, appends _rN suffix per replicate.')
