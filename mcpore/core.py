@@ -372,14 +372,13 @@ class HardCarbonPoreModel:
         if self.grid[r, c] != self.NA:
             return False
 
-        # Find empty valid neighbors
-        neighbors = self.get_neighbors(r, c)  # Returns non-carbon neighbors
-        empty_neighbors = [n for n in neighbors if self.grid[n] == self.EMPTY]
+        # Find all neighbors
+        neighbors = self.get_neighbors(r, c, include_walls=True)
 
-        if not empty_neighbors:
+        nr, nc = random.choice(neighbors)
+
+        if self.grid[nr, nc] != self.EMPTY:
             return False
-
-        nr, nc = random.choice(empty_neighbors)
 
         # Calculate Delta E
         dE = self.calculate_swap_energy(r, c, nr, nc)
