@@ -363,41 +363,29 @@ class HardCarbonPoreModel:
         return energy_removal + energy_addition
 
     def attempt_diffusion(self):
-        """Attempts to move a particle to an empty neighbor.
-
-        Proposes a random Na on valid_sites and a random empty neighbor of
-        it as destination.  Because the number of empty neighbours differs
-        between the forward (source→dest) and reverse (dest→source) moves,
-        the Metropolis–Hastings acceptance must include the ratio of
-        proposal probabilities α(rev)/α(fwd) = n_empty(src) / (n_empty(dst)+1).
-        """
+        """Attempts to move a particle to an empty neighbor."""
+        # Pick a random valid site to maintain detailed balance
+        # relative to area.
         r, c = random.choice(self.valid_sites)
 
+        # Only proceed if there is a particle to move
         if self.grid[r, c] != self.NA:
             return False
 
-        neighbors = self.get_neighbors(r, c)  # EMPTY or NA neighbors only
+        # Find empty valid neighbors
+        neighbors = self.get_neighbors(r, c)  # Returns non-carbon neighbors
         empty_neighbors = [n for n in neighbors if self.grid[n] == self.EMPTY]
+
         if not empty_neighbors:
             return False
 
         nr, nc = random.choice(empty_neighbors)
 
+        # Calculate Delta E
         dE = self.calculate_swap_energy(r, c, nr, nc)
 
-        # Detailed-balance correction:
-        #   n_empty(src)  –  empty neighbours of source in current config
-        #   n_empty(dst)  –  empty neighbours of destination in current config
-        # After the move src becomes empty, so reverse proposal picks from
-        # n_empty(dst)+1 empty neighbours.
-        n_empty_src = len(empty_neighbors)
-        dst_neighbors = self.get_neighbors(nr, nc)
-        n_empty_dst = sum(1 for t in dst_neighbors
-                          if self.grid[t] == self.EMPTY)
-        alpha_ratio = n_empty_src / (n_empty_dst + 1)
-
-        if (dE <= 0
-                or np.random.random() < alpha_ratio * np.exp(-dE * self.beta)):
+        # Metropolis Acceptance
+        if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
             assert self.grid[r, c] == self.NA
             assert self.grid[nr, nc] == self.EMPTY
             self.grid[r, c] = self.EMPTY
