@@ -484,14 +484,14 @@ class HardCarbonPoreModel:
             self.attempt_diffusion()
 
         self.steps += 1
+        # Snapshot time of full pore filling
+        if self.mcs_fill is None and self.get_filling_fraction() >= 0.99:
+            self.mcs_fill = self.mcs
         # Record stats every 0.5 MCS (approx)
         if self.steps % (len(self.valid_sites) // 2) == 0:
             self.time_points.append(self.mcs)
             self.filling_history.append(self.get_filling_fraction() * 100)
             self.formation_energy_history.append(self.formation_energy())
-            # Snapshot time of full pore filling
-            if self.mcs_fill is None and self.get_filling_fraction() == 1:
-                self.mcs_fill = self.mcs
         if self.steps % (len(self.valid_sites) * 10) == 0:
             self._check_equilibrium()
 
