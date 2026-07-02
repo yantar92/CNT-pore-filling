@@ -208,7 +208,8 @@ def run_voltage_sweep_simulation(
                 anneal0K=anneal0K,
                 p_swap=p_swap,
                 quiet=quiet)
-        save_model_svg(model, f"snapshot_{voltage}.svg")
+        if not quiet:
+            save_model_svg(model, f"snapshot_{voltage}.svg")
         filling_data.append(model.get_final_filling_percent())
         if visualize:
             visualize_model(model, ax_grid, ax_stats, formation_axis=formation_axis)
