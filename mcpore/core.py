@@ -477,9 +477,10 @@ class HardCarbonPoreModel:
         prob_gcmc = p_gcmc if p_gcmc is not None else self.default_p_gcmc
 
         if np.random.random() < prob_gcmc:
-            self.attempt_gcmc()
-        elif np.random.random() < p_swap:
-            self.attempt_swap()
+            if np.random.random() < p_swap:
+                self.attempt_swap()
+            else:
+                self.attempt_gcmc()
         else:
             self.attempt_diffusion()
 
