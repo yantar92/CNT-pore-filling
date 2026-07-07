@@ -1,6 +1,6 @@
 
 
-# Hard‑Carbon Pore‑Filling Monte Carlo Simulation – Software Documentation
+# Hard‑Carbon Pore‑Filling Monte Carlo Simulation
 
 This package provides a Metropolis Monte Carlo (MC) simulator for
 studying sodium‑ion filling of nanopores in hard‑carbon anodes for
@@ -219,24 +219,166 @@ Command‑line options:
 -   `--quiet` – suppress progress messages.
 
 
-## Model description (summary)
+## Implementation details
 
-The simulation implements a 2D triangular lattice of Na sites with a circular pore. Carbon‑wall sites occupy lattice positions outside the pore radius; a fraction of these wall sites are marked as defects (`DEFECT`) with a stronger Na‑adsorption energy. The remaining wall sites are ordinary carbon (`CARBON`). Sites inside the pore are either empty (`EMPTY`) or occupied by Na (`NA`).
+See [1.8](#org783cd52) for the semi‑grand‑canonical ensemble,
+move set, Metropolis acceptance, and kinetic interpretation.
 
-**Monte Carlo moves:**
-
--   **Diffusion**: a Na atom swaps with an adjacent empty site (Metropolis acceptance based on energy change).
--   **Grand‑canonical Monte Carlo (GCMC)**: insertion or removal of a Na atom at a pore‑surface site (adjacent to a carbon/defect). Acceptance depends on the interaction energy of the new/adatom and the chemical potential `μ = –voltage + 3·E_Na‑Na`.
-
-**Key energy parameters (default values from optB88‑vdW DFT):**
+**Default energy parameters (optB88‑vdW DFT):**
 
 -   `E_Na‑Na` = –0.35 eV/bond
 -   `E_Na‑C` = –0.32 eV/bond
 -   `E_Na‑defect` = –1.77 eV/bond (vs. vacuum)
 
-**Defect placement:** The `defect_probability` is interpreted as the atomic concentration of defective carbon atoms. Defects are placed exactly on the pore‑surface carbon sites (i.e., those adjacent to at least one empty pore site). This ensures defects are always accessible to Na.
+**Defect placement:** The `defect_probability` is interpreted as the
+atomic concentration of defective carbon atoms. With
+`defect_placement`'surface'= (the default), an exact fraction of
+pore‑surface carbon sites (those adjacent to at least one empty
+pore site) is randomly marked as `DEFECT`. This ensures defects are
+always accessible to Na.
 
-**Equilibrium detection:** The simulation monitors the filling‑fraction slope over a moving window (default 10 000 samples). When the slope falls below `1×10⁻⁵` per MC step and at least 10 000 MC steps have been performed, the run is considered to have reached equilibrium and stops early.
+**Equilibrium detection:** The simulation monitors the
+filling‑fraction slope over a moving window (default 10 000
+samples). When the slope falls below `1×10⁻⁵` per MC step and at
+least 10 000 MC steps have been performed, the run is considered to
+have reached equilibrium and stops early.
+
+
+## Physical background
+
+
+### Semi-grand-canonical ensemble
+
+Na filling in a hard‑carbon pore is modeled as a lattice gas in
+contact with a metallic Na electrode reservoir. The pore contains `M`
+valid sites on a triangular lattice, with binary occupation
+variables. A subset of `M_s` pore‑surface sites, those adjacent to
+carbon‑wall atoms, exchanges Na with the electrode. The reservoir
+fixes the chemical potential `mu`, which is related to the applied
+voltage `V` (relative to bulk Na) by
+
+    mu = -V + 3 E_Na‑Na
+
+assuming each Na in the pore has up to 3 in‑plane Na‑Na bonds on
+average (2D coordination).
+
+The target distribution is the semi‑grand‑canonical ensemble
+
+    pi(n) ∝ exp[-beta (E(n) - mu N(n))]
+
+where `E(n)` is the pore interaction energy, `N(n)` is the number of
+Na atoms in configuration `n`, and `beta = 1/(k_B T)`. The energy
+comprises three pairwise terms summed over nearest neighbors:
+
+    E(n) = E_Na‑Na(n) + E_Na‑C(n) + E_Na‑defect(n)
+
+
+### Move set and Metropolis acceptance
+
+The physical move set consists of two classes:
+
+-   ****Diffusion**:** A random valid pore site is selected, followed by a
+    random nearest‑neighbor direction on the triangular lattice. If the
+    selected site contains Na and the target is an empty valid pore
+    site, a local hop is proposed. Otherwise the attempt is a null
+    move. Diffusion conserves `N`.
+
+-   ****Surface insertion/deletion (GCMC)**:** A random surface‑exchange
+    site is selected. If the site is empty, Na insertion is proposed;
+    if occupied, Na deletion is proposed.
+
+Both proposal schemes are symmetric because they sample from fixed
+geometrical site sets, not from the set of currently possible moves.
+The Metropolis acceptance rule is
+
+    A = min[1, exp(-beta (Delta E - mu Delta N))]
+
+which gives `A_diff = min[1, exp(-beta Delta E)]` for diffusion,
+`A_ins = min[1, exp(-beta(Delta E - mu))]` for insertion, and
+`A_del = min[1, exp(-beta(Delta E + mu))]` for deletion.
+
+Null moves leave the configuration unchanged and do not affect the
+stationary distribution. The algorithm therefore satisfies detailed
+balance with respect to the semi‑grand distribution and samples
+equilibrium pore‑filling statistics.
+
+
+### Diffusion/GCMC move ratio
+
+Each MC step selects a move class with probability `p_gcmc` (GCMC) or
+`1-p_gcmc` (diffusion). The move‑class probability multiplies both
+forward and reverse proposal probabilities for that class and cancels
+in the Metropolis‑Hastings ratio. Consequently, `p_gcmc` does *not*
+affect the equilibrium distribution. It changes how the Markov chain
+explores configuration space but not the ensemble to which it
+converges.
+
+For equilibrium calculations, the ratio can be optimized for sampling
+efficiency (e.g., by minimizing autocorrelation times of slow
+observables such as `N` or filling fraction). Too small a `p_gcmc`
+slows exploration of different filling levels; too large a `p_gcmc`
+gives insufficient internal relaxation by diffusion.
+
+
+### Kinetic interpretation
+
+The same algorithm admits a kinetic interpretation when
+`p_gcmc` follows from the relative attempt frequencies of
+microscopic clocks. Assign one diffusion attempt clock to each valid
+pore site (frequency `nu_diff`) and one exchange attempt clock to
+each surface site (frequency `nu_gcmc`). The probability that the
+next attempted event is a surface‑exchange event is
+
+    p_gcmc = (r M_s) / (M + r M_s) ,  r = nu_gcmc / nu_diff
+
+The default setting `p_gcmc = M_s / (M + M_s)` corresponds to `r=1`,
+i.e., equal elementary attempt frequencies per diffusion site and per
+surface exchange site. This isolates the effects of pore geometry,
+surface/volume scaling (`p_gcmc ~ 1/R` for large pores), thermodynamic
+driving force, and lattice crowding under a controlled reference
+assumption.
+
+Under this interpretation, accepted moves follow Metropolis rates
+proportional to `min[1, exp(-beta(Delta E - mu Delta N))]`, which obey
+local detailed balance and relax to the correct semi‑grand equilibrium
+distribution.
+
+
+### Limitations
+
+The Metropolis kinetic model is not a replacement for
+transition‑state‑theory (TST) kinetics when absolute physical times
+or barrier‑controlled rates are required:
+
+-   ****No explicit barriers**:** The acceptance rule uses only initial and
+    final state energies. It does not include migration barriers,
+    charge‑transfer barriers, desolvation barriers, or
+    interface‑crossing barriers.
+
+-   ****Downhill moves**:** All downhill moves in `Delta E - mu Delta N`
+    occur at the same attempt‑limited rate, independent of how strongly
+    downhill they are. A TST model would assign different rates based on
+    saddle‑point barriers.
+
+-   ****Absolute time**:** Absolute physical time requires calibration of
+    `nu_diff`, `nu_gcmc`, or `r` against independent data (diffusion
+    coefficients, measured rates, atomistic barriers).
+
+-   ****Size‑dependent barriers**:** The model assumes the same elementary
+    attempt‑frequency ratio for all pore sizes. If activation barriers
+    vary systematically with pore size (e.g., radius‑dependent diffusion
+    barriers near curved walls), the kinetic size dependence may be
+    incomplete.
+
+Despite these limitations, the model provides internally consistent
+and physically interpretable pore‑size trends when those trends are
+dominated by geometry, thermodynamics, and lattice crowding rather
+than by unknown changes in activation barriers. The size dependence
+of `p_gcmc` (~1/R) captures the intuitive surface/volume scaling:
+larger pores have proportionally fewer exchange sites per interior
+diffusion site. The model is rigorous as an equilibrium
+semi‑grand‑canonical sampler and a well‑defined Metropolis kinetic
+model satisfying local detailed balance.
 
 
 # License and citation
