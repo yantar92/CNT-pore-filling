@@ -194,7 +194,8 @@ def plot_filling_barriers(
 def plot_formation_energies(
         radii=None,
         defect_probability=0.058*3,
-        norm='pore'):
+        norm='pore',
+        temperature=0):
     """Plot formation energies as a function of filling ratio for multiple radii."""
     if radii is None:
         radii = [5, 6, 10, 16, 20, 24, 30]
@@ -203,20 +204,33 @@ def plot_formation_energies(
     for radius in radii:
         filling_ratios, energies = get_formation_energies(
             radius, defect_probability, norm=norm, quiet=True)
+        if temperature > 0:
+            free_energies = []
+            tmp_model = HardCarbonPoreModel()
+            for c, en in zip(filling_ratios, energies):
+                if np.isclose(c, 0) or np.isclose(c, 1):
+                    free_energies.append(en)
+                else:
+                    free_energies.append(
+                        en - tmp_model.kB * temperature * (
+                            - c * np.log(c) - (1 - c) * np.log(1 - c)
+                        ))
+            energies = free_energies
         ax.plot(filling_ratios, energies, 'o-', label=f'{radius}Å')
     ax.set_xlabel('Filling ratio')
+    name = 'Formation energy' if np.isclose(temperature, 0) else 'Free energy'
     if norm is None:
-        ax.set_ylabel('Formation energy, eV')
+        ax.set_ylabel(f'{name}, eV')
     elif norm == 'pore':
-        ax.set_ylabel('Formation energy, eV/site')
+        ax.set_ylabel(f'{name}, eV/site')
     else:
         ax.set_ylabel('Formation energy, eV/atom')
-    ax.set_title(f'Formation energies of gradually filled pore (defects: {defect_probability})')
+    ax.set_title(f'Gradually filled pore (defects: {defect_probability}, T={temperature}K)')
     ax.legend()
-    ax.set_xlim(0, 0.2)
-    ax.set_ylim(-1, 1)
+    # ax.set_xlim(0, 0.2)
+    # ax.set_ylim(-1, 1)
     ax.grid()
-    name = f"formation_energy_vs_filling_{defect_probability:.2f}"
+    name = f"formation_energy_vs_filling_{defect_probability:.2f}_{temperature:.0f}K"
     plt.savefig(f'{name}.svg')
     plt.savefig(f'{name}.png')
 
