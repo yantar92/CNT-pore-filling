@@ -33,7 +33,7 @@ class HardCarbonPoreModel:
             initial_na_layers=0,  # pre-fill surface-adjacent layers with Na
             eq_window=4000,
             eq_slope_threshold=1e-8,
-            eq_min_mcs=5000,
+            eq_min_mcs=1E9,
             quiet=False,
             seed=None):
         """
