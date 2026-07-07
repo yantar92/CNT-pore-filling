@@ -15,111 +15,176 @@ scan generation, parallel execution, and publication‑ready analysis.
 ** Overview of scripts
   | Script             | Purpose                                                                                                                                                                                                      |
   |--------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-  | =mc‑pore.py=       | Core simulation engine. Runs a single MC simulation for a given parameter set.                                                                                                                               |
-  | =generate_scan.py= | Generates a command list for a full parameter scan (voltages, radii, defect probabilities, Na‑defect energies).                                                                                              |
+  | =mc‑pore.py=       | Core simulation engine. Runs a single MC simulation or voltage sweep for a given parameter set. Thin wrapper around the =mcpore= package.                                                                    |
+  | =generate_scan.py= | Generates a command list for a full parameter scan (voltages, radii, defect probabilities, Na‑defect energies). Thin wrapper around the =mcpore= package.                                                    |
   | =run.sh=           | Example wrapper that calls =generate_scan.py= and executes the scan with GNU Parallel.                                                                                                                       |
   | =analyze.py=       | Loads the aggregated results (=results.csv=), averages replicates, and produces a set of plots (filling fraction vs. radius, coloured by voltage) for each defect‑probability / Na‑defect‑energy combination. |
 
 ** Installation & dependencies
-  The simulation requires Python 3 with =numpy=, =matplotlib=,
-  =pandas=, and =seaborn= (for plot styling). GNU Parallel is needed
-  for running the parameter scan in parallel.
+   The simulation requires Python 3 with =numpy=, =matplotlib=,
+   =pandas=, and =seaborn= (for plot styling). GNU Parallel is needed
+   for running the parameter scan in parallel.
 
-  #+begin_src bash
-    # Install Python dependencies
-    pip install numpy matplotlib pandas seaborn
+   The package must be installed in development mode before the
+   wrapper scripts will work:
 
-    # On a typical Linux system, install GNU Parallel via your package manager
-    # (e.g., on Gentoo: emerge sys‑process/parallel)
-  #+end_src
+   #+begin_src bash
+     # Install Python dependencies and the mcpore package
+     pip install -e .
 
-All scripts are standalone and can be placed in the same directory.
+     # On a typical Linux system, install GNU Parallel via your package manager
+     # (e.g., on Gentoo: emerge sys‑process/parallel)
+   #+end_src
 
 ** Quick start: running a single simulation
-  #+begin_src bash
-  python mc‑pore.py --voltage 0.1 --radius 10.0 --defect_probability 0.174 \
-		    --energy_na_defect -1.53 --steps 1000000 --csv --quiet --seed 12345
-  #+end_src
+   #+begin_src bash
+   python mc‑pore.py --voltage 0.1 --radius 10.0 --defect_probability 0.174 \
+                     --energy_na_defect -1.53 --steps 1000000 --csv --quiet --seed 12345
+   #+end_src
 
-  This will output a single CSV line to stdout containing all simulation parameters and the final filling fraction. To see live visualisation, omit =--csv= and =--quiet= and add =--visualize=.
+   This outputs a single CSV line to stdout containing all simulation
+   parameters and the final filling fraction. To see live
+   visualisation, omit =--csv= and =--quiet= and add =--visualize=.
+
+** CLI reference (=mc‑pore.py=)
+   | Argument                    | Type   | Default      | Description                                                                                                                              |
+   |-----------------------------+--------+--------------+------------------------------------------------------------------------------------------------------------------------------------------|
+   | =--voltage=                 | float* | =0.1=        | Voltage relative to bulk Na (V). Pass multiple values (e.g. =--voltage 0.5 0.2 0.0=) to run a voltage sweep within a single invocation.  |
+   | =--radius=                  | float  | =10.0=       | Pore radius (Å).                                                                                                                         |
+   | =--steps=                   | int    | =1000000=    | Number of normalised Monte Carlo steps (MCS).                                                                                            |
+   | =--temp=                    | float  | =298.0=      | Temperature (K).                                                                                                                         |
+   | =--energy_na_na=            | float  | =-0.35=      | Na‑Na bond energy (eV).                                                                                                                  |
+   | =--energy_na_c=             | float  | =-0.26=      | Na‑C bond energy (eV).                                                                                                                   |
+   | =--energy_na_defect=        | float  | =-1.53=      | Na‑defect bond energy (eV).                                                                                                              |
+   | =--defect_probability=      | float  | =0.174=      | Atomic defect concentration (fraction of carbon sites that are defective).                                                               |
+   | =--defect_placement=        | str    | =surface=    | Defect placement mode: =surface= (exact fraction of pore‑surface wall sites) or =random= (Bernoulli per wall site).                      |
+   | =--initial-na-layers=       | int    | =0=          | Number of wall‑adjacent layers to pre‑fill with Na at time=0. =0= = empty pore; =1= = surface sites; =2+= = deeper layers.                |
+   | =--p_swap=                  | float  | =0.0=        | Probability of non‑local swap moves. Use =0= for kinetics; use =0.15= for voltage sweeps or accelerated equilibration.                   |
+   | =--csv=                     | flag   | off          | Output a single CSV line with final results to stdout.                                                                                   |
+   | =--quiet=                   | flag   | off          | Suppress all progress output.                                                                                                            |
+   | =--visualize=               | flag   | off          | Enable live Matplotlib visualisation.                                                                                                    |
+   | =--seed=                    | int    | random       | Random seed for reproducibility.                                                                                                         |
+   | =--anneal=                  | flag   | off          | Anneal the model at 0 K after each step (minimises energy at fixed Na count).                                                             |
+   | =--file=                    | str    | =None=       | Output file. If the filename ends with =.csv= or =.csv.gz=, writes the time series as CSV; otherwise writes pickle snapshots.            |
+   | =--converge=                | flag   | off          | Enable convergence mode: run replicates until statistics (mean and std of filling fraction and fill time) stabilise.                     |
+   | =--convergence_threshold=   | float  | =0.05=       | Relative change threshold for convergence (used with =--converge=).                                                                       |
+   | =--min_replicates=          | int    | =3=          | Minimum number of replicates before checking convergence.                                                                                |
+   | =--max_replicates=          | int    | =50=         | Maximum number of replicates in convergence mode.                                                                                        |
+
+   *Voltage sweep.* When multiple values are passed to =--voltage=, the
+   simulation runs a sequential sweep, re‑equilibrating at each voltage
+   and printing one CSV line per step. This avoids the overhead of
+   initialising a new model for each voltage.
+
+   *Convergence mode.* With =--converge=, the simulation runs multiple
+   replicates (different random seeds) until the relative change in
+   mean and standard deviation of the final filling fraction and fill
+   time falls below =--convergence_threshold=. This is useful for
+   obtaining well‑converged statistics for a single parameter set.
 
 ** Parameter‑scan workflow
-  1. *Generate the command list* (adjust =--replicates= and =--steps= as needed):
-     #+begin_src bash
-     python generate_scan.py --replicates 15 --steps 1000000 --output commands.txt
-     #+end_src
-     The script prints an estimate of the total number of simulations and wall‑time.
+   1. *Generate the command list* (adjust =--replicates= and =--steps= as needed):
+      #+begin_src bash
+      python generate_scan.py --replicates 15 --steps 1000000 --output commands.txt
+      #+end_src
+      The script prints an estimate of the total number of simulations and wall‑time.
 
-  2. *Run the scan with GNU Parallel* (here using 96 cores):
-     #+begin_src bash
-     cat commands.txt | parallel -j 96 --line‑buffer > results.csv
-     #+end_src
-     Each simulation outputs one CSV line; the =--line‑buffer= ensures lines are flushed immediately.
+      Additional =generate_scan.py= options:
+      | Argument                  | Type  | Default      | Description                                                                    |
+      |---------------------------+-------+--------------+--------------------------------------------------------------------------------|
+      | =--replicates=            | int   | =5=          | Number of replicates per parameter set.                                        |
+      | =--steps=                 | int   | =1000000=    | MC steps per simulation.                                                       |
+      | =--temperature=           | float | =298.0=      | Temperature (K).                                                               |
+      | =--converge=              | flag  | off          | Use convergence mode instead of fixed replicates.                              |
+      | =--convergence_threshold= | float | =0.01=       | Relative change threshold for convergence.                                     |
+      | =--min_replicates=        | int   | =3=          | Minimum replicates before convergence check.                                   |
+      | =--max_replicates=        | int   | =100=        | Maximum replicates in convergence mode.                                        |
+      | =--output=                | str   | =commands.txt= | Output file for the command list.                                            |
+      | =--seed_base=             | int   | =12345=      | Base seed for deterministic per‑command hashing.                               |
 
-  3. *After completion*, the file =results.csv= contains all simulation results, one row per run.
+   2. *Run the scan with GNU Parallel* (here using 96 cores):
+      #+begin_src bash
+      cat commands.txt | parallel -j 96 --line‑buffer > results.csv
+      #+end_src
+      Each simulation outputs one CSV line; the =--line‑buffer= ensures lines are flushed immediately.
+
+   3. *After completion*, the file =results.csv= contains all simulation results, one row per run.
 
 ** Output format (=results.csv=)
-  The CSV file has the following columns (in order):
+   The CSV file has the following columns (in order):
 
-  | Column                | Description                                                                                        |
-  |-----------------------+----------------------------------------------------------------------------------------------------|
-  | =voltage=             | Applied voltage (V) relative to bulk Na.                                                           |
-  | =radius=              | Pore radius (Å).                                                                                   |
-  | =defect_probability=  | Atomic defect concentration (fraction of carbon sites that are defective).                         |
-  | =defect_placement=    | Always ="surface"= (defects placed only on pore‑surface carbon sites).                             |
-  | =energy_na_defect=    | Na‑defect bond energy (eV, vs. vacuum).                                                            |
-  | =energy_na_na=        | Na‑Na bond energy (eV).                                                                            |
-  | =energy_na_c=         | Na‑C bond energy (eV).                                                                             |
-  | =temperature=         | Temperature (K).                                                                                   |
-  | =steps=               | Total MC steps requested.                                                                          |
-  | =seed=                | Random seed used.                                                                                  |
-  | =final_filling=       | Filling fraction (0–1) at the end of the simulation.                                               |
-  | =equilibrium_reached= | Boolean (=True=/=False=) indicating whether the filling fraction stabilised before the step limit. |
-  | =mcs=                 | Actual MC steps executed (normalised by number of lattice sites).                                  |
-  | =n_valid_sites=       | Number of lattice sites inside the pore.                                                           |
-  | =n_surface_sites=     | Number of pore‑surface sites (where GCMC insertion/removal is allowed).                            |
-  | =default_p_gcmc=      | Default probability of attempting a GCMC move (surface‑sites / valid‑sites).                        |
-  | =mu=                  | Chemical potential (eV) derived from voltage and Na‑Na energy.                                     |
+   | Column                | Description                                                                                        |
+   |-----------------------+----------------------------------------------------------------------------------------------------|
+   | =voltage=             | Applied voltage (V) relative to bulk Na.                                                           |
+   | =radius=              | Pore radius (Å).                                                                                   |
+   | =defect_probability=  | Atomic defect concentration (fraction of carbon sites that are defective).                         |
+   | =defect_placement=    | Always ="surface"= (defects placed only on pore‑surface carbon sites).                             |
+   | =energy_na_defect=    | Na‑defect bond energy (eV).                                                                        |
+   | =energy_na_na=        | Na‑Na bond energy (eV).                                                                            |
+   | =energy_na_c=         | Na‑C bond energy (eV).                                                                             |
+   | =temperature=         | Temperature (K).                                                                                   |
+   | =steps=               | Total MC steps requested.                                                                          |
+   | =seed=                | Random seed used.                                                                                  |
+   | =final_filling=       | Filling fraction (0–1) at the end of the simulation.                                               |
+   | =equilibrium_reached= | Boolean (=True=/=False=) indicating whether the filling fraction stabilised before the step limit. |
+   | =mcs=                 | Actual MC steps executed (normalised by number of lattice sites).                                  |
+   | =n_valid_sites=       | Number of lattice sites inside the pore.                                                           |
+   | =n_surface_sites=     | Number of pore‑surface sites (where GCMC insertion/removal is allowed).                            |
+   | =default_p_gcmc=      | Default probability of attempting a GCMC move (surface‑sites / valid‑sites).                        |
+   | =mu=                  | Chemical potential (eV) derived from voltage and Na‑Na energy.                                     |
+   | =mcs_fill=            | Normalised MCS at which the pore first reached ≥ 99 % filling (or =None= if never reached).         |
+   | =real_radius_angstrom=| Actual pore radius in Å computed from the discrete lattice (may differ slightly from the requested =radius=). |
 
 ** Analysis and visualisation
-  Run the analysis script to average replicates and generate publication‑style plots:
+   Run the analysis script to average replicates and generate publication‑style plots:
 
-  #+begin_src bash
-  python analyze.py results.csv --output‑dir ./plots
-  #+end_src
+   #+begin_src bash
+   python analyze.py results.csv --output‑dir ./plots
+   #+end_src
 
-  This will:
-  - Load =results.csv= and exclude any simulations that did not reach equilibrium.
-  - Group results by (=voltage=, =radius=, =defect_probability=, =energy_na_defect=) and compute mean ± standard deviation across replicates.
-  - Create one PNG plot per (=defect_probability=, =energy_na_defect=) combination, showing filling fraction vs. pore radius with separate lines (coloured by voltage). Each plot includes a colour‑bar for voltage and a text box listing constant simulation parameters.
-  - Save all plots to the specified output directory (default: current directory).
+   This will:
+   - Load =results.csv= and exclude any simulations that did not reach equilibrium.
+   - Group results by (=voltage=, =radius=, =defect_probability=, =energy_na_defect=) and compute mean ± standard deviation across replicates.
+   - Create one PNG plot per (=defect_probability=, =energy_na_defect=) combination, showing filling fraction vs. pore radius with separate lines (coloured by voltage). Each plot includes a colour‑bar for voltage and a text box listing constant simulation parameters.
+   - Save all plots to the specified output directory (default: current directory).
 
-  Command‑line options:
-  - =--output‑dir DIR= – directory for PNG files (created if missing).
-  - =--show‑plots= – display plots interactively (instead of only saving).
-  - =--quiet= – suppress progress messages.
+   Command‑line options:
+   - =--output‑dir DIR= – directory for PNG files (created if missing).
+   - =--show‑plots= – display plots interactively (instead of only saving).
+   - =--quiet= – suppress progress messages.
 
 ** Implementation details
-  See [[Physical background]] for the semi‑grand‑canonical ensemble,
-  move set, Metropolis acceptance, and kinetic interpretation.
+   See [[Physical background]] for the semi‑grand‑canonical ensemble,
+   move set, Metropolis acceptance, and kinetic interpretation.
 
-  *Default energy parameters (optB88‑vdW DFT):*
-  - =E_Na‑Na= = –0.35 eV/bond
-  - =E_Na‑C= = –0.32 eV/bond
-  - =E_Na‑defect= = –1.77 eV/bond (vs. vacuum)
+   *Default energy parameters (optB88‑vdW DFT):*
+   - =E_Na‑Na= = –0.35 eV/bond
+   - =E_Na‑C= = –0.26 eV/bond
+   - =E_Na‑defect= = –1.53 eV/bond
 
-  *Defect placement:* The =defect_probability= is interpreted as the
-  atomic concentration of defective carbon atoms. With
-  =defect_placement='surface'= (the default), an exact fraction of
-  pore‑surface carbon sites (those adjacent to at least one empty
-  pore site) is randomly marked as =DEFECT=. This ensures defects are
-  always accessible to Na.
+   *Defect placement:* The =defect_probability= is interpreted as the
+   atomic concentration of defective carbon atoms. With
+   =defect_placement='surface'= (the default), an exact fraction of
+   pore‑surface carbon sites (those adjacent to at least one empty
+   pore site) is randomly marked as =DEFECT=. This ensures defects are
+   always accessible to Na. With =defect_placement='random'=, each
+   wall site is independently assigned as defective with the given
+   probability.
 
-  *Equilibrium detection:* The simulation monitors the
-  filling‑fraction slope over a moving window (default 10 000
-  samples). When the slope falls below =1×10⁻⁵= per MC step and at
-  least 10 000 MC steps have been performed, the run is considered to
-  have reached equilibrium and stops early.
+   *Equilibrium detection:* The simulation monitors the
+   filling‑fraction slope over a moving window (default 10 000
+   samples). When the slope falls below =1×10⁻⁵= per MC step and at
+   least 10 000 MC steps have been performed, the run is considered to
+   have reached equilibrium and stops early.
+
+   *p_swap (non‑local swap moves):* Setting =--p_swap= to a value
+   like =0.15= enables non‑local hops: a randomly chosen Na atom is
+   moved to a randomly chosen empty site anywhere in the pore, with
+   Metropolis acceptance. These moves break the surface‑ring free‑energy
+   barrier and accelerate equilibration, but they are not physically
+   meaningful for kinetics. Use =--p_swap 0= (the default) when
+   measuring time‑dependent properties; use =--p_swap 0.15= when only
+   the final equilibrium filling fraction matters.
 
 ** Physical background
 *** Semi-grand-canonical ensemble

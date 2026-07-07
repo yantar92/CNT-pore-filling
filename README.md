@@ -31,12 +31,12 @@ scan generation, parallel execution, and publication‑ready analysis.
 <tbody>
 <tr>
 <td class="org-left"><code>mc‑pore.py</code></td>
-<td class="org-left">Core simulation engine. Runs a single MC simulation for a given parameter set.</td>
+<td class="org-left">Core simulation engine. Runs a single MC simulation or voltage sweep for a given parameter set. Thin wrapper around the <code>mcpore</code> package.</td>
 </tr>
 
 <tr>
 <td class="org-left"><code>generate_scan.py</code></td>
-<td class="org-left">Generates a command list for a full parameter scan (voltages, radii, defect probabilities, Na‑defect energies).</td>
+<td class="org-left">Generates a command list for a full parameter scan (voltages, radii, defect probabilities, Na‑defect energies). Thin wrapper around the <code>mcpore</code> package.</td>
 </tr>
 
 <tr>
@@ -58,21 +58,208 @@ The simulation requires Python 3 with `numpy`, `matplotlib`,
 `pandas`, and `seaborn` (for plot styling). GNU Parallel is needed
 for running the parameter scan in parallel.
 
-    # Install Python dependencies
-    pip install numpy matplotlib pandas seaborn
+The package must be installed in development mode before the
+wrapper scripts will work:
+
+    # Install Python dependencies and the mcpore package
+    pip install -e .
     
     # On a typical Linux system, install GNU Parallel via your package manager
     # (e.g., on Gentoo: emerge sys‑process/parallel)
-
-All scripts are standalone and can be placed in the same directory.
 
 
 ## Quick start: running a single simulation
 
     python mc‑pore.py --voltage 0.1 --radius 10.0 --defect_probability 0.174 \
-                        --energy_na_defect -1.53 --steps 1000000 --csv --quiet --seed 12345
+                      --energy_na_defect -1.53 --steps 1000000 --csv --quiet --seed 12345
 
-This will output a single CSV line to stdout containing all simulation parameters and the final filling fraction. To see live visualisation, omit `--csv` and `--quiet` and add `--visualize`.
+This outputs a single CSV line to stdout containing all simulation
+parameters and the final filling fraction. To see live
+visualisation, omit `--csv` and `--quiet` and add `--visualize`.
+
+
+## CLI reference (`mc‑pore.py`)
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">Argument</th>
+<th scope="col" class="org-left">Type</th>
+<th scope="col" class="org-left">Default</th>
+<th scope="col" class="org-left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left"><code>--voltage</code></td>
+<td class="org-left">float*</td>
+<td class="org-left"><code>0.1</code></td>
+<td class="org-left">Voltage relative to bulk Na (V). Pass multiple values (e.g. <code>--voltage 0.5 0.2 0.0</code>) to run a voltage sweep within a single invocation.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--radius</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>10.0</code></td>
+<td class="org-left">Pore radius (Å).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--steps</code></td>
+<td class="org-left">int</td>
+<td class="org-left"><code>1000000</code></td>
+<td class="org-left">Number of normalised Monte Carlo steps (MCS).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--temp</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>298.0</code></td>
+<td class="org-left">Temperature (K).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--energy_na_na</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>-0.35</code></td>
+<td class="org-left">Na‑Na bond energy (eV).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--energy_na_c</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>-0.26</code></td>
+<td class="org-left">Na‑C bond energy (eV).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--energy_na_defect</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>-1.53</code></td>
+<td class="org-left">Na‑defect bond energy (eV).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--defect_probability</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>0.174</code></td>
+<td class="org-left">Atomic defect concentration (fraction of carbon sites that are defective).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--defect_placement</code></td>
+<td class="org-left">str</td>
+<td class="org-left"><code>surface</code></td>
+<td class="org-left">Defect placement mode: <code>surface</code> (exact fraction of pore‑surface wall sites) or <code>random</code> (Bernoulli per wall site).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--initial-na-layers</code></td>
+<td class="org-left">int</td>
+<td class="org-left"><code>0</code></td>
+<td class="org-left">Number of wall‑adjacent layers to pre‑fill with Na at time=0. <code>0</code> = empty pore; <code>1</code> = surface sites; <code>2+</code> = deeper layers.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--p_swap</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>0.0</code></td>
+<td class="org-left">Probability of non‑local swap moves. Use <code>0</code> for kinetics; use <code>0.15</code> for voltage sweeps or accelerated equilibration.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--csv</code></td>
+<td class="org-left">flag</td>
+<td class="org-left">off</td>
+<td class="org-left">Output a single CSV line with final results to stdout.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--quiet</code></td>
+<td class="org-left">flag</td>
+<td class="org-left">off</td>
+<td class="org-left">Suppress all progress output.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--visualize</code></td>
+<td class="org-left">flag</td>
+<td class="org-left">off</td>
+<td class="org-left">Enable live Matplotlib visualisation.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--seed</code></td>
+<td class="org-left">int</td>
+<td class="org-left">random</td>
+<td class="org-left">Random seed for reproducibility.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--anneal</code></td>
+<td class="org-left">flag</td>
+<td class="org-left">off</td>
+<td class="org-left">Anneal the model at 0 K after each step (minimises energy at fixed Na count).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--file</code></td>
+<td class="org-left">str</td>
+<td class="org-left"><code>None</code></td>
+<td class="org-left">Output file. If the filename ends with <code>.csv</code> or <code>.csv.gz</code>, writes the time series as CSV; otherwise writes pickle snapshots.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--converge</code></td>
+<td class="org-left">flag</td>
+<td class="org-left">off</td>
+<td class="org-left">Enable convergence mode: run replicates until statistics (mean and std of filling fraction and fill time) stabilise.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--convergence_threshold</code></td>
+<td class="org-left">float</td>
+<td class="org-left"><code>0.05</code></td>
+<td class="org-left">Relative change threshold for convergence (used with <code>--converge</code>).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--min_replicates</code></td>
+<td class="org-left">int</td>
+<td class="org-left"><code>3</code></td>
+<td class="org-left">Minimum number of replicates before checking convergence.</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>--max_replicates</code></td>
+<td class="org-left">int</td>
+<td class="org-left"><code>50</code></td>
+<td class="org-left">Maximum number of replicates in convergence mode.</td>
+</tr>
+</tbody>
+</table>
+
+**Voltage sweep.** When multiple values are passed to `--voltage`, the
+simulation runs a sequential sweep, re‑equilibrating at each voltage
+and printing one CSV line per step. This avoids the overhead of
+initialising a new model for each voltage.
+
+**Convergence mode.** With `--converge`, the simulation runs multiple
+replicates (different random seeds) until the relative change in
+mean and standard deviation of the final filling fraction and fill
+time falls below `--convergence_threshold`. This is useful for
+obtaining well‑converged statistics for a single parameter set.
 
 
 ## Parameter‑scan workflow
@@ -82,6 +269,94 @@ This will output a single CSV line to stdout containing all simulation parameter
         python generate_scan.py --replicates 15 --steps 1000000 --output commands.txt
     
     The script prints an estimate of the total number of simulations and wall‑time.
+    
+    Additional `generate_scan.py` options:
+    
+    <table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+    
+    
+    <colgroup>
+    <col  class="org-left" />
+    
+    <col  class="org-left" />
+    
+    <col  class="org-left" />
+    
+    <col  class="org-left" />
+    </colgroup>
+    <thead>
+    <tr>
+    <th scope="col" class="org-left">Argument</th>
+    <th scope="col" class="org-left">Type</th>
+    <th scope="col" class="org-left">Default</th>
+    <th scope="col" class="org-left">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td class="org-left"><code>--replicates</code></td>
+    <td class="org-left">int</td>
+    <td class="org-left"><code>5</code></td>
+    <td class="org-left">Number of replicates per parameter set.</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--steps</code></td>
+    <td class="org-left">int</td>
+    <td class="org-left"><code>1000000</code></td>
+    <td class="org-left">MC steps per simulation.</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--temperature</code></td>
+    <td class="org-left">float</td>
+    <td class="org-left"><code>298.0</code></td>
+    <td class="org-left">Temperature (K).</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--converge</code></td>
+    <td class="org-left">flag</td>
+    <td class="org-left">off</td>
+    <td class="org-left">Use convergence mode instead of fixed replicates.</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--convergence_threshold</code></td>
+    <td class="org-left">float</td>
+    <td class="org-left"><code>0.01</code></td>
+    <td class="org-left">Relative change threshold for convergence.</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--min_replicates</code></td>
+    <td class="org-left">int</td>
+    <td class="org-left"><code>3</code></td>
+    <td class="org-left">Minimum replicates before convergence check.</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--max_replicates</code></td>
+    <td class="org-left">int</td>
+    <td class="org-left"><code>100</code></td>
+    <td class="org-left">Maximum replicates in convergence mode.</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--output</code></td>
+    <td class="org-left">str</td>
+    <td class="org-left"><code>commands.txt</code></td>
+    <td class="org-left">Output file for the command list.</td>
+    </tr>
+    
+    <tr>
+    <td class="org-left"><code>--seed_base</code></td>
+    <td class="org-left">int</td>
+    <td class="org-left"><code>12345</code></td>
+    <td class="org-left">Base seed for deterministic per‑command hashing.</td>
+    </tr>
+    </tbody>
+    </table>
 
 2.  **Run the scan with GNU Parallel** (here using 96 cores):
     
@@ -133,7 +408,7 @@ The CSV file has the following columns (in order):
 
 <tr>
 <td class="org-left"><code>energy_na_defect</code></td>
-<td class="org-left">Na‑defect bond energy (eV, vs. vacuum).</td>
+<td class="org-left">Na‑defect bond energy (eV).</td>
 </tr>
 
 <tr>
@@ -195,6 +470,16 @@ The CSV file has the following columns (in order):
 <td class="org-left"><code>mu</code></td>
 <td class="org-left">Chemical potential (eV) derived from voltage and Na‑Na energy.</td>
 </tr>
+
+<tr>
+<td class="org-left"><code>mcs_fill</code></td>
+<td class="org-left">Normalised MCS at which the pore first reached ≥ 99 % filling (or <code>None</code> if never reached).</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>real_radius_angstrom</code></td>
+<td class="org-left">Actual pore radius in Å computed from the discrete lattice (may differ slightly from the requested <code>radius</code>).</td>
+</tr>
 </tbody>
 </table>
 
@@ -221,27 +506,38 @@ Command‑line options:
 
 ## Implementation details
 
-See [1.8](#org783cd52) for the semi‑grand‑canonical ensemble,
+See [1.9](#orgc45ba8a) for the semi‑grand‑canonical ensemble,
 move set, Metropolis acceptance, and kinetic interpretation.
 
 **Default energy parameters (optB88‑vdW DFT):**
 
 -   `E_Na‑Na` = –0.35 eV/bond
--   `E_Na‑C` = –0.32 eV/bond
--   `E_Na‑defect` = –1.77 eV/bond (vs. vacuum)
+-   `E_Na‑C` = –0.26 eV/bond
+-   `E_Na‑defect` = –1.53 eV/bond
 
 **Defect placement:** The `defect_probability` is interpreted as the
 atomic concentration of defective carbon atoms. With
 `defect_placement`'surface'= (the default), an exact fraction of
 pore‑surface carbon sites (those adjacent to at least one empty
 pore site) is randomly marked as `DEFECT`. This ensures defects are
-always accessible to Na.
+always accessible to Na. With `defect_placement`'random'=, each
+wall site is independently assigned as defective with the given
+probability.
 
 **Equilibrium detection:** The simulation monitors the
 filling‑fraction slope over a moving window (default 10 000
 samples). When the slope falls below `1×10⁻⁵` per MC step and at
 least 10 000 MC steps have been performed, the run is considered to
 have reached equilibrium and stops early.
+
+**p<sub>swap</sub> (non‑local swap moves):** Setting `--p_swap` to a value
+like `0.15` enables non‑local hops: a randomly chosen Na atom is
+moved to a randomly chosen empty site anywhere in the pore, with
+Metropolis acceptance. These moves break the surface‑ring free‑energy
+barrier and accelerate equilibration, but they are not physically
+meaningful for kinetics. Use `--p_swap 0` (the default) when
+measuring time‑dependent properties; use `--p_swap 0.15` when only
+the final equilibrium filling fraction matters.
 
 
 ## Physical background
