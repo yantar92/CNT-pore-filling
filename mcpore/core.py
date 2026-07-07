@@ -95,7 +95,7 @@ class HardCarbonPoreModel:
 
         # 6. Calculate default probabilities
         if len(self.valid_sites) > 0:
-            self.default_p_gcmc = len(self.surface_sites) / len(self.valid_sites)
+            self.default_p_gcmc = len(self.surface_sites) / (len(self.valid_sites) + len(self.surface_sites))
         else:
             self.default_p_gcmc = 0.0
 
