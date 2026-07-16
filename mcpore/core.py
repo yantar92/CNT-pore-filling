@@ -109,6 +109,8 @@ class HardCarbonPoreModel:
         self.fine_time_points_exit = []
         self.dE_history_entry = []
         self.dE_history_exit = []
+        self.record_fine_history = False  # only enabled when --visualize
+        self.record_full_history = False  # set True when writing CSV time series
 
         # 8. Equilibrium detection
         self.equilibrium_reached = False
@@ -404,8 +406,9 @@ class HardCarbonPoreModel:
             # Delta E = E_interaction - mu
             interaction = self._calculate_potential_energy_at_site(r, c)
             dE = interaction - self.mu
-            self.fine_time_points_entry.append(self.mcs)
-            self.dE_history_entry.append(dE)
+            if self.record_fine_history:
+                self.fine_time_points_entry.append(self.mcs)
+                self.dE_history_entry.append(dE)
 
             if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
                 self.grid[r, c] = self.NA
@@ -415,8 +418,9 @@ class HardCarbonPoreModel:
             # Reverse of insertion: Delta E = -(E_interaction - mu)
             interaction = self._calculate_potential_energy_at_site(r, c)
             dE = -(interaction - self.mu)
-            self.fine_time_points_exit.append(self.mcs)
-            self.dE_history_exit.append(dE)
+            if self.record_fine_history:
+                self.fine_time_points_exit.append(self.mcs)
+                self.dE_history_exit.append(dE)
 
             if dE <= 0 or np.random.random() < np.exp(-dE * self.beta):
                 self.grid[r, c] = self.EMPTY
@@ -493,6 +497,15 @@ class HardCarbonPoreModel:
             self.time_points.append(self.mcs)
             self.filling_history.append(self.get_filling_fraction() * 100)
             self.formation_energy_history.append(self.formation_energy())
+            # Cap core history to prevent unbounded memory growth
+            # unless full recording is requested (CSV output mode).
+            if not self.record_full_history:
+                max_history = max(self.eq_window * 3, 10000)
+                if len(self.filling_history) > max_history:
+                    keep = max(self.eq_window * 2, 5000)
+                    self.time_points = self.time_points[-keep:]
+                    self.filling_history = self.filling_history[-keep:]
+                    self.formation_energy_history = self.formation_energy_history[-keep:]
         if self.steps % (len(self.valid_sites) * 10) == 0:
             self._check_equilibrium()
 

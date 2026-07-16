@@ -64,6 +64,8 @@ def run_simulation(
 
     # Initialize Model
     model.quiet = quiet
+    model.record_fine_history = visualize
+    model.record_full_history = is_csv_output
     model.equilibrium_reached = False
     snapshots = []
     BEGIN_MC = model.mcs
