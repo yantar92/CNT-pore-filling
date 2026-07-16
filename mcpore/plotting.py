@@ -53,7 +53,7 @@ TIMESERIES_COLUMNS: list[str] = ['Time', 'Filling', 'Formation energy']
 
 def setup_mpl_style(
         *,
-        font_size: float = 13,
+        font_size: float = 12,
         width: float = 4.13,
         ratio: float = 0.75,
         dpi: int = 300,
@@ -81,11 +81,11 @@ def setup_mpl_style(
         'savefig.dpi': savefig_dpi,
 
         'font.size': font_size,
-        'axes.labelsize': font_size + 0.5,
-        'axes.titlesize': font_size + 0.5,
-        'legend.fontsize': font_size - 1,
-        'xtick.labelsize': font_size - 0.5,
-        'ytick.labelsize': font_size - 0.5,
+        'axes.labelsize': font_size * 1.06,
+        'axes.titlesize': font_size * 1.06,
+        'legend.fontsize': font_size * 0.88,
+        'xtick.labelsize': font_size * 0.94,
+        'ytick.labelsize': font_size * 0.94,
 
         'axes.linewidth': 0.8,
         'xtick.major.width': 0.8,
