@@ -53,7 +53,7 @@ TIMESERIES_COLUMNS: list[str] = ['Time', 'Filling', 'Formation energy']
 
 def setup_mpl_style(
         *,
-        font_size: float = 8.5,
+        font_size: float = 13,
         width: float = 4.13,
         ratio: float = 0.75,
         dpi: int = 300,
