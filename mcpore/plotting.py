@@ -143,12 +143,12 @@ def load_timeseries_df(
         file_glob: str,
         n_samples: int | None = None,
         downsample: int = 1,
-) -> pd.DataFrame:
-    """Load and combine time-series CSV files matching a glob pattern.
+        concatenate: bool = True,
+) -> pd.DataFrame | list[pd.DataFrame]:
+    """Load time-series CSV files matching a glob pattern.
 
     Each file is read with ``TIMESERIES_COLUMNS`` (skipping the first
-    row), then all replicates are concatenated and sorted by the
-    ``Time`` column.
+    row).
 
     Results are cached to disk inside *data_dir* using content-based
     invalidation (keyed on the matched files' mtimes).
@@ -159,10 +159,16 @@ def load_timeseries_df(
             ``'0.00V_2200K_15A_r*.csv.gz'``).  The pattern is
             appended to *data_dir*.
         n_samples: If set, read at most this many files.
-        downsample: Keep every N-th row after concatenation.
+        downsample: Keep every N-th row (applied per file before any
+            concatenation).
+        concatenate: If ``True`` (default), concatenate all replicates
+            into a single DataFrame sorted by ``Time``.  If ``False``,
+            return a list of DataFrames, one per file, in the order
+            they were matched.
 
     Returns:
-        Concatenated, sorted DataFrame.
+        Concatenated, sorted DataFrame when ``concatenate=True``;
+        list of per-file DataFrames when ``concatenate=False``.
 
     Raises:
         FileNotFoundError: If no files match the glob pattern.
@@ -177,30 +183,38 @@ def load_timeseries_df(
     if n_samples is not None:
         files = files[:n_samples]
 
-    # Derive a cache name from the glob and parameters
+    # Derive a cache name from the glob and parameters.
+    # When concatenate=False, use a distinct suffix so the two modes
+    # do not collide; the default (concatenate=True) keeps the
+    # existing cache name for backward compatibility.
     glob_slug = file_glob.replace('*', 'STAR').replace('/', '_')
-    cache_name = (
-        f'{glob_slug}_n{len(files)}_d{downsample}.pkl.gz')
-    cache_path = data_dir / cache_name
+    cache_name = f'{glob_slug}_n{len(files)}_d{downsample}'
+    if not concatenate:
+        cache_name += '_list'
+    cache_path = data_dir / (cache_name + '.pkl.gz')
 
-    def _compute() -> pd.DataFrame:
-        df: pd.DataFrame | None = None
+    def _compute() -> pd.DataFrame | list[pd.DataFrame]:
+        dfs: list[pd.DataFrame] = []
         for f in files:
             logger.debug('Reading %s', f)
             df0 = pd.read_csv(
                 f, names=TIMESERIES_COLUMNS, skiprows=1)
             df0 = df0.iloc[::downsample]
-            if df is None:
-                df = df0
-            else:
-                df = pd.concat([df, df0], ignore_index=True)
-        if df is None:
+            dfs.append(df0)
+        if not dfs:
             raise RuntimeError('No data read from matched files')
-        df = df.sort_values(by=['Time']).reset_index(drop=True)
+        if concatenate:
+            result = pd.concat(dfs, ignore_index=True)
+            result = result.sort_values(
+                by=['Time']).reset_index(drop=True)
+            logger.info(
+                'Loaded %d rows from %d files (downsample=%d)',
+                len(result), len(files), downsample)
+            return result
         logger.info(
-            'Loaded %d rows from %d files (downsample=%d)',
-            len(df), len(files), downsample)
-        return df
+            'Loaded %d files (downsample=%d)',
+            len(dfs), downsample)
+        return dfs
 
     return _cached_dataframe(_compute, cache_path, source_paths=files)
 
