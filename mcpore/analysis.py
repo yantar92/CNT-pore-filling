@@ -10,7 +10,7 @@ import warnings
 from pathlib import Path
 from multiprocessing import Pool
 
-from mcpore.core import HardCarbonPoreModel, save_model_svg
+from mcpore.core import HardCarbonPoreModel, save_model_svg, RESULTS_CSV_COLUMNS
 
 
 def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=False):
@@ -414,15 +414,7 @@ def analyze_pore_filling(
     try:
         df = pd.read_csv(
             input_file,
-            names=[
-                "voltage", "radius",
-                "defect_probability", "defect_placement",
-                "energy_na_defect", "energy_na_na", "energy_na_c",
-                "temperature", "steps", "seed",
-                "final_filling", "equilibrium_reached", "mcs",
-                "n_valid_sites", "n_surface_sites", "default_p_gcmc",
-                "mu", "fill_mcs"
-            ],
+            names=RESULTS_CSV_COLUMNS,
         )
     except FileNotFoundError:
         print(f"Error: File '{input_file}' not found.")

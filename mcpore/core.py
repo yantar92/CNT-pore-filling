@@ -11,6 +11,19 @@ import pandas as pd
 # Module-level constants
 CSV_GZ_SUFFIX = '.csv.gz'
 
+# Column names for the single-row results CSV written by run_simulation
+# (csv_output=True) and read by analysis tools.  Order must match
+# the comma-separated row printed in run_simulation.
+RESULTS_CSV_COLUMNS: list[str] = [
+    'voltage', 'radius',
+    'defect_probability', 'defect_placement',
+    'energy_na_defect', 'energy_na_na', 'energy_na_c',
+    'temperature', 'steps', 'seed',
+    'final_filling', 'equilibrium_reached', 'mcs',
+    'n_valid_sites', 'n_surface_sites', 'default_p_gcmc',
+    'mu', 'fill_mcs',
+]
+
 
 class HardCarbonPoreModel:
     """2D triangular-lattice Monte Carlo model of Na filling a hard-carbon pore."""

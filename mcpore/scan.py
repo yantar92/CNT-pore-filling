@@ -6,6 +6,8 @@ import argparse
 import hashlib
 import sys
 
+from mcpore.core import RESULTS_CSV_COLUMNS
+
 
 def generate_voltage_points():
     """20 voltage points with higher density in 0-0.1V."""
@@ -75,14 +77,8 @@ def generate_scan_commands(
         f.write('\n'.join(commands))
 
     print(f"Generated {len(commands)} commands in {output}", file=sys.stderr)
-    # CSV header (same order as mc-pore-scan.py output)
-    header = [
-        'voltage', 'radius', 'defect_probability', 'defect_placement',
-        'energy_na_defect', 'energy_na_na', 'energy_na_c', 'temperature',
-        'steps', 'seed', 'final_filling', 'equilibrium_reached', 'mcs',
-        'n_valid_sites', 'n_surface_sites', 'default_p_gcmc', 'mu'
-    ]
-    print('# ' + ','.join(header), file=sys.stderr)
+    # CSV header (same order as results CSV output by run_simulation)
+    print('# ' + ','.join(RESULTS_CSV_COLUMNS), file=sys.stderr)
     print(f"# To run: cat {output} | parallel -j 96 --line-buffer > results.csv", file=sys.stderr)
 
 

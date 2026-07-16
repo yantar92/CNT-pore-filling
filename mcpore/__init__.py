@@ -7,6 +7,7 @@ Provides:
 - analyze_pore_filling: parameter scan result analysis
 - plot_* functions: publication-quality figures
 - generate_voltage_points / generate_scan_commands: scan setup
+- plotting infrastructure: style setup, data loading, caching
 """
 
 from mcpore.core import (
@@ -15,6 +16,7 @@ from mcpore.core import (
     visualize_model,
     save_timeseries_csv,
     CSV_GZ_SUFFIX,
+    RESULTS_CSV_COLUMNS,
 )
 
 from mcpore.simulation import (
@@ -39,4 +41,11 @@ from mcpore.analysis import (
 from mcpore.scan import (
     generate_voltage_points,
     generate_scan_commands,
+)
+
+from mcpore.plotting import (
+    TIMESERIES_COLUMNS,
+    setup_mpl_style,
+    load_results_df,
+    load_timeseries_df,
 )
