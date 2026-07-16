@@ -81,11 +81,11 @@ def setup_mpl_style(
         'savefig.dpi': savefig_dpi,
 
         'font.size': font_size,
-        'axes.labelsize': font_size * 1.06,
-        'axes.titlesize': font_size * 1.06,
-        'legend.fontsize': font_size * 0.88,
-        'xtick.labelsize': font_size * 0.94,
-        'ytick.labelsize': font_size * 0.94,
+        'axes.labelsize': font_size,
+        'axes.titlesize': font_size * 4 / 3,
+        'legend.fontsize': font_size,
+        'xtick.labelsize': font_size / 1.2,
+        'ytick.labelsize': font_size / 1.2,
 
         'axes.linewidth': 0.8,
         'xtick.major.width': 0.8,
