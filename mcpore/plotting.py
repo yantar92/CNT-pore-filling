@@ -83,7 +83,7 @@ def setup_mpl_style(
         'font.size': font_size,
         'axes.labelsize': font_size,
         'axes.titlesize': font_size * 4 / 3,
-        'legend.fontsize': font_size,
+        'legend.fontsize': font_size / 1.2,
         'xtick.labelsize': font_size / 1.2,
         'ytick.labelsize': font_size / 1.2,
 
