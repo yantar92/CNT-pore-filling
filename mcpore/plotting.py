@@ -259,11 +259,11 @@ def _cached_dataframe(
             with gzip.open(cache_path, 'rb') as f:
                 cached_hash, cached_data = pickle.load(f)
             if cached_hash == source_hash:
-                logger.debug('Cache hit: %s', cache_path)
+                logger.info('Cache hit: %s', cache_path)
                 return cached_data
-            logger.debug('Cache stale: %s', cache_path)
+            logger.info('Cache stale: %s', cache_path)
         except (OSError, pickle.PickleError, EOFError) as e:
-            logger.debug('Failed to read cache %s: %s', cache_path, e)
+            logger.warning('Failed to read cache %s: %s', cache_path, e)
 
     data = compute_fn()
 
