@@ -117,6 +117,8 @@ def load_results_df(path: str | Path) -> pd.DataFrame:
 
     Returns:
         DataFrame with the standard scan-result schema.
+        The DataFrame carries a ``_from_cache`` attribute (bool)
+        indicating whether the data was read from a disk cache.
 
     Raises:
         FileNotFoundError: If *path* does not exist.
@@ -134,7 +136,9 @@ def load_results_df(path: str | Path) -> pd.DataFrame:
         logger.info('Loaded %d rows from %s', len(df), path)
         return df
 
-    return _cached_dataframe(_compute, cache_path, source_paths=[path])
+    df, from_cache = _cached_dataframe(_compute, cache_path, source_paths=[path])
+    df._from_cache = from_cache
+    return df
 
 
 def load_timeseries_df(
@@ -169,6 +173,8 @@ def load_timeseries_df(
     Returns:
         Concatenated, sorted DataFrame when ``concatenate=True``;
         list of per-file DataFrames when ``concatenate=False``.
+        Each DataFrame carries a ``_from_cache`` attribute (bool)
+        indicating whether the data was read from a disk cache.
 
     Raises:
         FileNotFoundError: If no files match the glob pattern.
@@ -220,7 +226,13 @@ def load_timeseries_df(
             len(dfs), downsample)
         return dfs
 
-    return _cached_dataframe(_compute, cache_path, source_paths=files)
+    result, from_cache = _cached_dataframe(_compute, cache_path, source_paths=files)
+    if concatenate:
+        result._from_cache = from_cache
+    else:
+        for df in result:
+            df._from_cache = from_cache
+    return result
 
 
 # --- Caching internals ---------------------------------------------------
@@ -254,7 +266,7 @@ def _cached_dataframe(
         cache_path: Path,
         *,
         source_paths: list[Path],
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, bool]:
     """Compute or retrieve a DataFrame from a disk cache.
 
     Uses content-based invalidation: the cache is reused only when
@@ -268,7 +280,7 @@ def _cached_dataframe(
             determine cache validity.
 
     Returns:
-        The DataFrame (from cache or freshly computed).
+        Tuple of (DataFrame, from_cache: bool).
     """
     source_hash = _compute_source_hash(source_paths)
 
@@ -278,7 +290,7 @@ def _cached_dataframe(
                 cached_hash, cached_data = pickle.load(f)
             if cached_hash == source_hash:
                 logger.info('Cache hit: %s', cache_path)
-                return cached_data
+                return cached_data, True
             logger.info('Cache stale: %s', cache_path)
         except (OSError, pickle.PickleError, EOFError) as e:
             logger.warning('Failed to read cache %s: %s', cache_path, e)
@@ -299,4 +311,4 @@ def _cached_dataframe(
             raise
     os.rename(tmp.name, cache_path)
     logger.debug('Cached to %s', cache_path)
-    return data
+    return data, False
