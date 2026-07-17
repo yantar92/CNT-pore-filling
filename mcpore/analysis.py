@@ -116,30 +116,7 @@ def plot_filling_barriers(
     if radii is None:
         radii = np.arange(5, 31, 1)
 
-    a4_width = 4.13 * 2
-    width = a4_width * 1.12
-    height = width * 2 / 4 * 0.9
-    mpl.rcParams.update({
-        "figure.figsize": (width, height),
-        "figure.dpi": 300,
-        "savefig.dpi": 600,
-        "font.size": 13,
-        "axes.labelsize": 11,
-        "axes.titlesize": 13,
-        "legend.fontsize": 11,
-        "xtick.labelsize": 11,
-        "ytick.labelsize": 11,
-        "axes.linewidth": 0.8,
-        "xtick.major.width": 0.8,
-        "ytick.major.width": 0.8,
-        "xtick.minor.width": 0.6,
-        "ytick.minor.width": 0.6,
-        "lines.linewidth": 1.5,
-        "lines.markersize": 4.2,
-        "pdf.fonttype": 42,
-        "ps.fonttype": 42,
-        "mathtext.default": "regular",
-    })
+    setup_mpl_style(width=4.13 * 2 * 1.12, ratio=0.45)
 
     fig, ax = plt.subplots(1, 1)
 
