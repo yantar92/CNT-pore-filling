@@ -11,6 +11,7 @@ from pathlib import Path
 from multiprocessing import Pool
 
 from mcpore.core import HardCarbonPoreModel, save_model_svg, RESULTS_CSV_COLUMNS
+from mcpore.plotting import setup_mpl_style
 
 
 def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=False):
@@ -295,30 +296,7 @@ def plot_filling_voltages(radii=None, defect_probability=0):
     if radii is None:
         radii = np.arange(5, 31)
 
-    a4_width = 4.13 * 2
-    width = a4_width / 2
-    height = width * 3 / 4
-    mpl.rcParams.update({
-        "figure.figsize": (width, height),
-        "figure.dpi": 300,
-        "savefig.dpi": 600,
-        "font.size": 13,
-        "axes.labelsize": 11,
-        "axes.titlesize": 13,
-        "legend.fontsize": 11,
-        "xtick.labelsize": 11,
-        "ytick.labelsize": 11,
-        "axes.linewidth": 0.8,
-        "xtick.major.width": 0.8,
-        "ytick.major.width": 0.8,
-        "xtick.minor.width": 0.6,
-        "ytick.minor.width": 0.6,
-        "lines.linewidth": 1.5,
-        "lines.markersize": 4.2,
-        "pdf.fonttype": 42,
-        "ps.fonttype": 42,
-        "mathtext.default": "regular",
-    })
+    setup_mpl_style()
 
     fig, ax = plt.subplots(1, 1)
 
