@@ -201,7 +201,7 @@ def load_timeseries_df(
                 df0 = pd.read_csv(
                     f, names=TIMESERIES_COLUMNS, skiprows=1)
                 df0 = df0.iloc[::downsample]
-            except (pd.errors.ParserError, OSError, ValueError) as e:
+            except (pd.errors.ParserError, OSError, ValueError, EOFError) as e:
                 logger.warning('Skipping %s: %s', f, e)
                 continue
             dfs.append(df0)
