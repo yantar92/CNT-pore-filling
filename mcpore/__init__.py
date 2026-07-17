@@ -35,6 +35,7 @@ from mcpore.analysis import (
     plot_formation_energies,
     plot_filling_voltages,
     plot_voltages,
+    get_voltage_profile,
     analyze_pore_filling,
 )
 

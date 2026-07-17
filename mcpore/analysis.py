@@ -235,16 +235,63 @@ def plot_formation_energies(
     plt.savefig(f'{name}.png')
 
 
-def plot_filling_voltages(radii=None, defect_probability=0):
-    """Plot filling voltage vs. pore diameter.
+def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True):
+    """Compute voltage profile for a pore of given RADIUS.
 
-    Uses pymatgen to compute insertion voltages from formation energies.
+    Calls get_formation_energies internally, then uses pymatgen to
+    convert formation energies into insertion voltages.
+
+    Parameters
+    ----------
+    radius : float
+        Pore radius in angstroms.
+    defect_probability : float
+        Probability of defect sites.
+    norm : str or None
+        Normalization for formation energies (passed to get_formation_energies).
+    quiet : bool
+        If True, suppress per-step SVG output.
+
+    Returns
+    -------
+    filling_fraction : list of float
+        Filling fraction (0 to 1) at each voltage step.
+    voltage : list of float
+        Insertion voltage (V) at each filling step.
     """
     from pymatgen.entries.computed_entries import ComputedEntry
     from pymatgen.apps.battery.insertion_battery import InsertionElectrode
     from pymatgen.apps.battery.plotter import VoltageProfilePlotter
     from pymatgen.core import Composition
 
+    _, energies = get_formation_energies(
+        radius, defect_probability, norm=norm, quiet=quiet)
+    n_na = len(energies) - 1
+
+    na_entry = ComputedEntry(Composition("Na"), 0)
+    na_entry.data["volume"] = 1
+    c_entry = ComputedEntry(Composition("C"), 0)
+    c_entry.data["volume"] = 1
+    entries = [c_entry]
+    for n, e in enumerate(energies):
+        if n == 0:
+            continue
+        entry = ComputedEntry(Composition(f"Na{n}C"), e)
+        entry.data["volume"] = 1
+        entries.append(entry)
+    electrode = InsertionElectrode.from_entries(
+        entries, working_ion_entry=na_entry, strip_structures=False)
+    plotter = VoltageProfilePlotter(xaxis='x_form')
+    x, voltage = plotter.get_plot_data(electrode, term_zero=False)
+    filling_fraction = [xi / n_na for xi in x]
+    return filling_fraction, voltage
+
+
+def plot_filling_voltages(radii=None, defect_probability=0):
+    """Plot filling voltage vs. pore diameter.
+
+    Uses pymatgen to compute insertion voltages from formation energies.
+    """
     if radii is None:
         radii = np.arange(5, 31)
 
@@ -280,26 +327,8 @@ def plot_filling_voltages(radii=None, defect_probability=0):
 
     for radius in radii:
         tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
-        filling_ratios, energies = get_formation_energies(
-            radius, defect_probability, norm=None, quiet=True)
-        voltages = []
-        entries = []
         print(tem.real_radius_angstrom)
-        na_entry = ComputedEntry(Composition("Na"), 0)
-        na_entry.data["volume"] = 1
-        c_entry = ComputedEntry(Composition("C"), 0)
-        c_entry.data["volume"] = 1
-        entries.append(c_entry)
-        for n, e in enumerate(energies):
-            if n == 0:
-                continue
-            entry = ComputedEntry(Composition(f"Na{n}C"), e)
-            entry.data["volume"] = 1
-            entries.append(entry)
-        electrode = InsertionElectrode.from_entries(
-            entries, working_ion_entry=na_entry, strip_structures=False)
-        plotter = VoltageProfilePlotter(xaxis='x_form')
-        x, voltage = plotter.get_plot_data(electrode, term_zero=False)
+        _, voltage = get_voltage_profile(radius, defect_probability)
         ds.append(tem.real_radius_angstrom * 2 / 10.0)
         vs.append(voltage[-1])
     ax.plot(ds, vs, 'o', color='black')
@@ -322,38 +351,14 @@ def plot_voltages(radii=None, defect_probability=0.058*3):
 
     Uses pymatgen to compute insertion voltages from formation energies.
     """
-    from pymatgen.entries.computed_entries import ComputedEntry
-    from pymatgen.apps.battery.insertion_battery import InsertionElectrode
-    from pymatgen.apps.battery.plotter import VoltageProfilePlotter
-    from pymatgen.core import Composition
-
     if radii is None:
         radii = [5, 7, 8, 10, 16, 20, 24, 30]
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     for radius in radii:
         tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
-        filling_ratios, energies = get_formation_energies(
-            radius, defect_probability, norm=None, quiet=True)
-        voltages = []
-        entries = []
-        print(energies)
-        na_entry = ComputedEntry(Composition("Na"), 0)
-        na_entry.data["volume"] = 1
-        c_entry = ComputedEntry(Composition("C"), 0)
-        c_entry.data["volume"] = 1
-        entries.append(c_entry)
-        for n, e in enumerate(energies):
-            if n == 0:
-                continue
-            entry = ComputedEntry(Composition(f"Na{n}C"), e)
-            entry.data["volume"] = 1
-            entries.append(entry)
-        electrode = InsertionElectrode.from_entries(
-            entries, working_ion_entry=na_entry, strip_structures=False)
-        plotter = VoltageProfilePlotter(xaxis='x_form')
-        x, voltage = plotter.get_plot_data(electrode, term_zero=False)
-        ax.plot(np.array(x) / (len(energies) - 1), voltage, 'o-',
+        x, voltage = get_voltage_profile(radius, defect_probability)
+        ax.plot(x, voltage, 'o-',
                 label=f'{tem.real_radius_angstrom}Å')
     ax.set_xlabel('Filling ratio')
     ax.set_ylabel('Voltage, V')
