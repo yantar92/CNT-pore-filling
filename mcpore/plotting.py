@@ -197,9 +197,13 @@ def load_timeseries_df(
         dfs: list[pd.DataFrame] = []
         for f in files:
             logger.debug('Reading %s', f)
-            df0 = pd.read_csv(
-                f, names=TIMESERIES_COLUMNS, skiprows=1)
-            df0 = df0.iloc[::downsample]
+            try:
+                df0 = pd.read_csv(
+                    f, names=TIMESERIES_COLUMNS, skiprows=1)
+                df0 = df0.iloc[::downsample]
+            except (pd.errors.ParserError, OSError, ValueError) as e:
+                logger.warning('Skipping %s: %s', f, e)
+                continue
             dfs.append(df0)
         if not dfs:
             raise RuntimeError('No data read from matched files')
