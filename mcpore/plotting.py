@@ -108,9 +108,11 @@ def load_results_df(path: str | Path) -> pd.DataFrame:
     """Load scan results CSV with standard column names.
 
     The CSV must have no header row; columns are assigned from
-    ``RESULTS_CSV_COLUMNS`` (defined in ``mcpore.core``).  Results are
-    cached to disk beside the CSV file (``<path>.pkl.gz``) using
-    content-based invalidation.
+    ``RESULTS_CSV_COLUMNS`` (defined in ``mcpore.core``).  Older CSV
+    files with fewer columns (e.g. missing ``real_radius``) are
+    handled gracefully -- missing columns are filled with NaN.
+    Results are cached to disk beside the CSV file
+    (``<path>.pkl.gz``) using content-based invalidation.
 
     Args:
         path: Path to the results CSV file.
@@ -132,8 +134,13 @@ def load_results_df(path: str | Path) -> pd.DataFrame:
     cache_path = path.with_suffix('.pkl.gz')
 
     def _compute() -> pd.DataFrame:
-        df = pd.read_csv(path, names=RESULTS_CSV_COLUMNS)
-        logger.info('Loaded %d rows from %s', len(df), path)
+        df = pd.read_csv(path, header=None)
+        n_cols = df.shape[1]
+        columns = RESULTS_CSV_COLUMNS[:n_cols]
+        df.columns = columns
+        for col in RESULTS_CSV_COLUMNS[n_cols:]:
+            df[col] = float('nan')
+        logger.info('Loaded %d rows (cols=%d) from %s', len(df), n_cols, path)
         return df
 
     df, from_cache = _cached_dataframe(_compute, cache_path, source_paths=[path])
