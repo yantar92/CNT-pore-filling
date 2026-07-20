@@ -80,6 +80,23 @@ def setup_mpl_style(
         'figure.dpi': dpi,
         'savefig.dpi': savefig_dpi,
 
+        # Use constrained layout so that the axes rectangle within the
+        # figure is determined by the layout engine rather than by
+        # ad-hoc subplot-parameter defaults.  When all figures include
+        # the same set of text elements (title, xlabel, ylabel -- even
+        # if some are empty strings), constrained_layout produces
+        # identical axes sizes across figures, keeping the data area
+        # consistent.  Without this, adding or removing a title
+        # silently shrinks or expands the axes box while the total
+        # figure dimensions stay fixed, which confuses visual
+        # comparison and panel alignment in publications.
+        #
+        # IMPORTANT: saving with bbox_inches='tight' or calling
+        # fig.tight_layout() defeats this consistency.  Both
+        # operations recompute the layout and can change the saved
+        # figure dimensions.  Save with only the filename and dpi.
+        'figure.constrained_layout.use': True,
+
         'font.size': font_size,
         'axes.labelsize': font_size,
         'axes.titlesize': font_size * 4 / 3,

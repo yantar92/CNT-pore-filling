@@ -131,8 +131,8 @@ ax.legend(ncols=4)
 # cbar.set_label("Pore radius (Å)")
 # cbar.ax.tick_params(direction="out")
 
-fig.savefig(f"voltage_vs_filling_T{TEMPERATURE}_c{DEFECT_CONCENTRATION}.svg", bbox_inches="tight")
-fig.savefig(f"voltage_vs_filling_T{TEMPERATURE}_c{DEFECT_CONCENTRATION}.png", bbox_inches="tight")
+fig.savefig(f"voltage_vs_filling_T{TEMPERATURE}_c{DEFECT_CONCENTRATION}.svg")
+fig.savefig(f"voltage_vs_filling_T{TEMPERATURE}_c{DEFECT_CONCENTRATION}.png")
 plt.show()
 
 

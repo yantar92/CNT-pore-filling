@@ -294,9 +294,10 @@ def plot_filling_voltages(radii=None, defect_probability=0):
             label=f'V $\\sim$ {fit[0]:.2f}/d')
     ax.set_xlabel('Diameter, nm')
     ax.set_ylabel('Filling voltage, V')
+    ax.set_title('Filling voltage')
     ax.legend()
     name = f"filling_voltage_{defect_probability:.2f}"
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.savefig(f'{name}.svg')
     plt.savefig(f'{name}.png')
 
@@ -627,8 +628,12 @@ def analyze_pore_filling(
             filename = filename.replace('.', 'p')
             filepath = output_path / filename
 
-            fig.tight_layout()
-            fig.savefig(filepath, dpi=DPI, bbox_inches='tight')
+            # Do NOT call tight_layout() or use bbox_inches='tight'.
+            # constrained_layout (set via setup_mpl_style) already
+            # handles spacing; both of those operations recompute the
+            # layout and can change the saved figure dimensions,
+            # breaking consistent figure sizing.
+            fig.savefig(filepath, dpi=DPI)
 
             if verbose:
                 print(f"  Saved: {filepath}")
