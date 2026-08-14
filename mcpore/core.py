@@ -632,8 +632,8 @@ def save_model_svg(model, filename, scale=80):
 
     # Visualization radius limit
     vis_limit_lattice = min(
-        model.radius_lattice_units + 1.8,
-        model.radius_lattice_units * 1.1)
+        model.radius_lattice_units + 4.8,
+        model.radius_lattice_units * 1.3)
 
     for r in range(model.grid_width):
         for c in range(model.grid_width):
