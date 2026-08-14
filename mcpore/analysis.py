@@ -307,18 +307,19 @@ def plot_voltages(radii=None, defect_probability=0.058*3):
 
     Uses pymatgen to compute insertion voltages from formation energies.
     """
+    setup_mpl_style()
     if radii is None:
         radii = [5, 7, 8, 10, 16, 20, 24, 30]
 
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    fig, ax = plt.subplots(1, 1)
     for radius in radii:
         tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
         x, voltage = get_voltage_profile(radius, defect_probability)
-        ax.plot(x, voltage, 'o-',
-                label=f'{tem.real_radius_angstrom}Å')
-    ax.set_xlabel('Filling ratio')
+        ax.plot(np.array(x) * 100, voltage, 'o-',
+                label=f'{tem.real_radius_angstrom:.2f} Å')
+    ax.set_xlabel('Filling ratio (%)')
     ax.set_ylabel('Voltage, V')
-    ax.set_title(f'Voltages for gradually filled pore (defects: {defect_probability})')
+    ax.set_title(f'Voltages for gradually filled pore (defects: {defect_probability * 100:.1f}%)')
     ax.legend()
     ax.grid()
     name = f"voltage_{defect_probability:.2f}"
