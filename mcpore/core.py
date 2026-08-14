@@ -264,6 +264,32 @@ class HardCarbonPoreModel:
 
         return distance
 
+    def wall_layer_distances(self):
+        """BFS from pore-adjacent wall sites outward through wall atoms only.
+
+        Returns {(r, c): layer}; layer 0 = wall site adjacent to the pore
+        interior. Used to render a fixed number of carbon rings in figures,
+        independent of pore size and grid padding.
+        """
+        from collections import deque
+
+        distance = {}
+        queue = deque()
+        for r, c in self.adjacent_wall_sites:
+            distance[(r, c)] = 0
+            queue.append((r, c))
+
+        while queue:
+            r, c = queue.popleft()
+            for nr, nc in self.get_neighbors(r, c, include_walls=True):
+                if self.grid[nr, nc] not in (self.CARBON, self.DEFECT):
+                    continue
+                if (nr, nc) not in distance:
+                    distance[(nr, nc)] = distance[(r, c)] + 1
+                    queue.append((nr, nc))
+
+        return distance
+
     def _initialize_na_layers(self, n_layers):
         """Pre-fill the first N_LAYERS of wall-adjacent sites with Na atoms.
 
@@ -620,20 +646,21 @@ class HardCarbonPoreModel:
 
 # --- Visualization ---
 
-def save_model_svg(model, filename, scale=80):
+def save_model_svg(model, filename, scale=80, wall_layers=1):
     """Save pore model atomic grid to FILENAME as SVG.
 
     SCALE is number of pixels per lattice unit in the SVG.
+    WALL_LAYERS is the number of carbon/defect rings drawn outward from
+    the pore surface (independent of pore size and grid padding).
     """
 
     # 1. Collect elements to draw
     atoms = []  # List of (x, y, type)
     xs, ys = [], []
 
-    # Visualization radius limit
-    vis_limit_lattice = min(
-        model.radius_lattice_units + 4.8,
-        model.radius_lattice_units * 1.3)
+    # Wall atoms are drawn only out to a fixed number of layers from the
+    # pore surface (independent of pore size and grid padding).
+    wall_dist = model.wall_layer_distances()
 
     for r in range(model.grid_width):
         for c in range(model.grid_width):
@@ -641,11 +668,12 @@ def save_model_svg(model, filename, scale=80):
             if site_type == model.EMPTY:
                 continue
 
-            x, y = model.get_triangular_coordinates(r, c)
-            dist = np.sqrt(x**2 + y**2)
+            # Limit wall atoms to WALL_LAYERS rings from the pore surface.
+            if site_type in (model.CARBON, model.DEFECT):
+                if wall_dist.get((r, c), np.inf) >= wall_layers:
+                    continue
 
-            if dist > vis_limit_lattice:
-                continue
+            x, y = model.get_triangular_coordinates(r, c)
 
             xs.append(x)
             ys.append(y)
