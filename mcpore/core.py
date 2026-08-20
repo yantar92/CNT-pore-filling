@@ -507,6 +507,11 @@ class HardCarbonPoreModel:
         """Number of normalized MC steps."""
         return self.steps / len(self.valid_sites)
 
+    @property
+    def n_defects(self) -> int:
+        """Number of defect sites placed on the pore wall."""
+        return int(np.sum(self.grid == self.DEFECT))
+
     def run_step(self, p_gcmc=None, p_swap=0.0):
         """Executes one Monte Carlo Step (MCS).
 

@@ -14,17 +14,19 @@ from mcpore.core import HardCarbonPoreModel, save_model_svg, RESULTS_CSV_COLUMNS
 from mcpore.plotting import setup_mpl_style
 
 
-def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=False):
+def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=False, seed=None):
     """Get formation energy vs. concentration for pore with RADIUS.
 
     Return (filling_ratios, energies).
     Unless QUIET is True, save snapshots of the pore for each concentration.
+    SEED controls the random defect placement (None leaves it unseeded).
     """
     model = HardCarbonPoreModel(
         pore_radius_angstrom=radius,
         temperature_k=4000,
         defect_probability=defect_probability,
-        voltage=0)
+        voltage=0,
+        seed=seed)
     filling_ratios = [0]
     energies = [model.formation_energy(norm)]
     for idx in range(len(model.valid_sites)):
@@ -213,7 +215,7 @@ def plot_formation_energies(
     plt.savefig(f'{name}.png')
 
 
-def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True):
+def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True, seed=None):
     """Compute voltage profile for a pore of given RADIUS.
 
     Calls get_formation_energies internally, then uses pymatgen to
@@ -229,6 +231,9 @@ def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True):
         Normalization for formation energies (passed to get_formation_energies).
     quiet : bool
         If True, suppress per-step SVG output.
+    seed : int or None
+        Random seed for the pore's defect placement (passed to
+        get_formation_energies).  None leaves the RNG unseeded.
 
     Returns
     -------
@@ -243,7 +248,7 @@ def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True):
     from pymatgen.core import Composition
 
     _, energies = get_formation_energies(
-        radius, defect_probability, norm=norm, quiet=quiet)
+        radius, defect_probability, norm=norm, quiet=quiet, seed=seed)
     n_na = len(energies) - 1
 
     na_entry = ComputedEntry(Composition("Na"), 0)
@@ -298,6 +303,81 @@ def plot_filling_voltages(radii=None, defect_probability=0):
     ax.legend()
     name = f"filling_voltage_{defect_probability:.2f}"
     # plt.tight_layout()
+    plt.savefig(f'{name}.svg')
+    plt.savefig(f'{name}.png')
+
+
+def plot_filling_voltages_vs_defects(
+        defect_probabilities=None,
+        radii=None,
+        norm=None,
+        quiet=True,
+        n_ensemble=100,
+        seed_start=0):
+    """Plot filling voltage vs. number of defects for multiple pore sizes.
+
+    One curve per pore size (radius).  The filling voltage for each
+    (radius, defect_probability) pair is the median over N_ENSEMBLE
+    independent pore realizations of the final insertion voltage of the
+    fully filled pore, computed via pymatgen from formation energies.
+    The x-axis is the defect concentration (number of defect sites divided
+    by the number of wall sites), not the nominal defect_probability.
+    Averaging over an ensemble washes out details of the random defect
+    placement for a single pore.
+    """
+    if defect_probabilities is None:
+        defect_probabilities = [0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.15, 0.20, 0.25]
+    if radii is None:
+        radii = [8, 12, 17]
+
+    setup_mpl_style()
+
+    fig, ax = plt.subplots(1, 1)
+
+    # Flatten the (radius, defect_probability, seed) grid into a task list
+    # so the expensive formation-energy sweeps can run in parallel.
+    tasks = [
+        (radius, dp, norm, quiet, seed)
+        for radius in radii
+        for dp in defect_probabilities
+        for seed in range(seed_start, seed_start + n_ensemble)
+    ]
+    with Pool() as pool:
+        results = pool.starmap(get_voltage_profile, tasks)
+
+    voltages_by_key = {}
+    for (radius, dp, _norm, _quiet, _seed), (_fraction, voltage) in zip(tasks, results):
+        voltages_by_key.setdefault((radius, dp), []).append(voltage[-1])
+
+    rows = []
+    for radius in radii:
+        tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
+        diameter_nm = tem.real_radius_angstrom * 2 / 10.0
+        vs = [np.median(voltages_by_key[(radius, dp)]) for dp in defect_probabilities]
+        defect_concentration = []
+        for dp in defect_probabilities:
+            model = HardCarbonPoreModel(
+                pore_radius_angstrom=radius, defect_probability=dp)
+            defect_concentration.append(
+                model.n_defects / len(model.adjacent_wall_sites))
+        for dp, concentration, voltage in zip(
+                defect_probabilities, defect_concentration, vs):
+            rows.append({
+                'radius_angstrom': radius,
+                'diameter_nm': diameter_nm,
+                'defect_probability': dp,
+                'defect_concentration': concentration,
+                'filling_voltage_v': voltage,
+            })
+        ax.plot(defect_concentration, vs, 'o-',
+                label=f'{diameter_nm:.1f} nm')
+
+    ax.set_xlabel('Defect concentration')
+    ax.set_ylabel('Filling voltage, V')
+    ax.set_title('Filling voltage vs. defect concentration')
+    ax.legend()
+    name = "filling_voltage_vs_defects"
+    pd.DataFrame(rows).to_csv(f'{name}.csv', index=False)
     plt.savefig(f'{name}.svg')
     plt.savefig(f'{name}.png')
 
