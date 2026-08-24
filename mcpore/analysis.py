@@ -332,7 +332,8 @@ def plot_filling_voltages(
         quiet=True,
         n_ensemble: int = 100,
         seed_start: int = 0,
-        fit_label: bool = True
+        fit_label: bool = True,
+        colormap_name: str = 'viridis'
         ) -> None:
     """Plot filling voltage vs. pore diameter.
 
@@ -359,7 +360,7 @@ def plot_filling_voltages(
     if len(defect_probabilities) == 1:
         colors = ['black']
     else:
-        cmap = plt.get_cmap('viridis')
+        cmap = plt.get_cmap(colormap_name)
         colors = [cmap(i / (len(defect_probabilities) - 1))
                   for i in range(len(defect_probabilities))]
 
