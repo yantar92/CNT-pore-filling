@@ -361,8 +361,11 @@ def plot_filling_voltages(
         colors = ['black']
     else:
         cmap = plt.get_cmap(colormap_name)
-        colors = [cmap(i / (len(defect_probabilities) - 1))
-                  for i in range(len(defect_probabilities))]
+        if cmap.N <= 40:  # qualitative/list-style colormap (tab10, tab20, Set1, Paired, ...)
+            colors = [cmap(i % cmap.N) for i in range(len(defect_probabilities))]
+        else:  # continuous colormap (viridis, ...)
+            colors = [cmap(i / (len(defect_probabilities) - 1))
+                      for i in range(len(defect_probabilities))]
 
     for color, probability in zip(colors, defect_probabilities):
         ds = []
