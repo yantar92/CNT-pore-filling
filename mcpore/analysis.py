@@ -271,6 +271,407 @@ def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True, see
     return filling_fraction, voltage
 
 
+def _interp_profile(fraction, value, grid):
+    """Interpolate a single (fraction, value) profile onto a common grid.
+
+    Drops non-finite values and deduplicates/sorts the fraction axis so
+    that ``np.interp`` receives a monotonically increasing ``xp``.
+    """
+    fraction = np.asarray(fraction, dtype=float)
+    value = np.asarray(value, dtype=float)
+
+    mask = np.isfinite(value)
+    fraction = fraction[mask]
+    value = value[mask]
+
+    order = np.argsort(fraction, kind='stable')
+    fraction = fraction[order]
+    value = value[order]
+
+    # np.interp requires strictly increasing xp; collapse duplicate x.
+    _, unique_idx = np.unique(fraction, return_index=True)
+    return np.interp(grid, fraction[unique_idx], value[unique_idx])
+
+
+def plot_voltage_profile_ensemble(
+        radius,
+        defect_probability=0,
+        norm=None,
+        quiet=True,
+        n_ensemble=100,
+        seed_start=0,
+        n_grid=50,
+        quantiles=(0.25, 0.75),
+        show_individual: bool | str = False,
+        filename=None):
+    """Plot ensemble median voltage profile with quantile error bars.
+
+    For a single pore radius and defect concentration, compute the
+    voltage profile (voltage vs. filling fraction) for N_ENSEMBLE
+    independent pore realizations (distinct seeds) and plot the median
+    voltage against the filling fraction, with the QUANTILES range
+    (default 25-75%) shown as vertical error bars.
+
+    Because each realization can have a slightly different number of
+    valid sites, profiles are interpolated onto a common filling-fraction
+    grid before computing the median and quantiles.
+
+    Parameters
+    ----------
+    radius : float
+        Pore radius in angstroms.
+    defect_probability : float
+        Probability of defect sites.
+    norm : str or None
+        Normalization passed to get_formation_energies.
+    quiet : bool
+        If True, suppress per-step SVG output.
+    n_ensemble : int
+        Number of independent pore realizations.
+    seed_start : int
+        First seed value; the ensemble uses seeds
+        [seed_start, seed_start + n_ensemble).
+    n_grid : int
+        Number of filling-fraction points on the common interpolation grid.
+    quantiles : tuple of float
+        Lower and upper quantiles for the error bars (default 0.25, 0.75).
+    show_individual : bool | srt
+        If True, also plot each individual realization's voltage profile
+        as an opaque gray line behind the median/quantile markers.
+        If string 'only', do not plot medians at all, just the individual
+        voltage profiles.
+    filename : str or None
+        Base filename (without extension) for the saved figures.  If None,
+        a name is derived from radius and defect_probability.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes of the created plot.
+    """
+    tasks = [
+        (radius, defect_probability, norm, quiet, seed)
+        for seed in range(seed_start, seed_start + n_ensemble)
+    ]
+    with Pool() as pool:
+        results = pool.starmap(get_voltage_profile, tasks)
+
+    grid = np.linspace(0.0, 1.0, n_grid)
+    voltages = np.full((n_ensemble, n_grid), np.nan)
+    for i, (fraction, voltage) in enumerate(results):
+        voltages[i, :] = _interp_profile(fraction, voltage, grid)
+
+    median = np.nanmedian(voltages, axis=0)
+    q_lo = np.nanquantile(voltages, quantiles[0], axis=0)
+    q_hi = np.nanquantile(voltages, quantiles[1], axis=0)
+
+    setup_mpl_style()
+    fig, ax = plt.subplots(1, 1)
+
+    if show_individual:
+        for i, (fraction, voltage) in enumerate(results):
+            ax.step(
+                np.array(fraction) * 100,
+                voltage,
+                color='gray',
+                alpha=1 if n_ensemble < 10 else 0.1,
+                linewidth=0.5,
+                zorder=1)
+
+    if show_individual != 'only':
+        ax.errorbar(
+            grid * 100,
+            median,
+            yerr=[median - q_lo, q_hi - median],
+            fmt='o',
+            markersize=3,
+            capsize=2,
+            elinewidth=1,
+            color='black',
+            label=(
+                f'median (error bars: {quantiles[0] * 100:.0f}'
+                f'-{quantiles[1] * 100:.0f}%)'
+            ))
+    ax.set_xlabel('Filling ratio (%)')
+    ax.set_ylabel('Voltage, V')
+    ax.set_title(
+        f'Ensemble voltage profile (r={radius:.0f} Å, '
+        f'defects={defect_probability * 100:.1f}%)',
+        fontsize=10)
+    ax.legend()
+    # ax.grid()
+
+    if filename is None:
+        filename = (
+            f"voltage_profile_ensemble_r{radius:.0f}"
+            f"_p{defect_probability:.2f}_{seed_start}_{n_ensemble}")
+    plt.savefig(f'{filename}.svg')
+    plt.savefig(f'{filename}.png')
+    return ax
+
+
+def get_convex_hull(radius, defect_probability=0, norm='pore', quiet=True, seed=None):
+    """Compute the convex hull of formation energies for a pore realization.
+
+    Total formation energies for a single pore are obtained from
+    get_formation_energies (with norm=None) and the stable filling states
+    are identified with pymatgen's PhaseDiagram.  A state holding ``n`` Na
+    atoms is represented by the composition ``Na{n}C{N}``, where ``N`` is
+    the number of valid pore sites.  The empty pore is the pure-C end
+    member and a pure-Na entry anchors the opposite end of the binary Na-C
+    diagram, so the hull's x coordinate is pymatgen's atomic fraction of
+    Na, ``n / (n + N)``.
+
+    Parameters
+    ----------
+    radius : float
+        Pore radius in angstroms.
+    defect_probability : float
+        Probability of defect sites.
+    norm : str or None
+        Normalization of the returned hull energies: 'pore' (per valid
+        site, default), 'Na' (per Na atom), or None (total energy).
+    quiet : bool
+        If True, suppress per-step SVG output.
+    seed : int or None
+        Random seed for the pore's defect placement.
+
+    Returns
+    -------
+    fraction : list of float
+        Atomic fraction of Na in each stable (hull) state, in increasing
+        order.
+    hull_energy : numpy.ndarray
+        Formation energy of each hull state in the requested normalization.
+    all_fractions: list of float
+        All the atomic fractions.
+    all_energies : numpy.ndarray
+        All the formation energies.
+    """
+    from pymatgen.entries.computed_entries import ComputedEntry
+    from pymatgen.analysis.phase_diagram import PhaseDiagram
+    from pymatgen.core import Composition, Element
+
+    _, energies = get_formation_energies(
+        radius, defect_probability, norm=None, quiet=quiet, seed=seed)
+    n_sites = len(energies) - 1
+
+    na_entry = ComputedEntry(Composition("Na"), 0)
+    na_entry.data["volume"] = 1
+    c_entry = ComputedEntry(Composition("C"), 0)
+    c_entry.data["volume"] = 1
+    entries = [c_entry]
+    for n, e in enumerate(energies):
+        if n == 0:
+            continue
+        entry = ComputedEntry(Composition(f"Na{n}C{n_sites}"), e)
+        entry.data["volume"] = 1
+        entries.append(entry)
+
+    entries.append(na_entry)
+
+    phase_diagram = PhaseDiagram(entries, elements=[Element('C'), Element('Na')])
+
+    unstable = phase_diagram.unstable_entries
+    unstable_fractions = [
+        entry.composition.get_atomic_fraction("Na") for entry in unstable
+    ]
+    unstable_formation_energy = np.array(
+        [phase_diagram.get_form_energy(entry) for entry in unstable],
+        dtype=float)
+
+    stable = sorted(
+        phase_diagram.stable_entries,
+        key=lambda entry: entry.composition.get_atomic_fraction("Na"))
+    fraction = [
+        entry.composition.get_atomic_fraction("Na") for entry in stable
+    ]
+    formation_energy = np.array(
+        [phase_diagram.get_form_energy(entry) for entry in stable],
+        dtype=float)
+
+    if norm is None:
+        hull_energy = formation_energy
+        unstable_energy = unstable_formation_energy
+    elif norm == 'pore':
+        hull_energy = formation_energy / n_sites
+        unstable_energy = unstable_formation_energy / n_sites
+    # elif norm == 'Na':
+    #     n_na = np.array(
+    #         [entry.composition.get("Na", 0) for entry in stable], dtype=float)
+    #     with np.errstate(divide='ignore', invalid='ignore'):
+    #         per_na = formation_energy / n_na
+    #     hull_energy = np.where(n_na > 0, per_na, 0.0)
+    else:
+        raise ValueError(
+            f"Unknown norm {norm!r}; expected 'pore', 'Na', or None")
+
+    return fraction, hull_energy, unstable_fractions, unstable_energy
+
+
+def plot_convex_hull_ensemble(
+        radius,
+        defect_probability=0,
+        norm='pore',
+        quiet=True,
+        n_ensemble=100,
+        seed_start=0,
+        n_grid=100,
+        quantiles=(0.25, 0.75),
+        show_individual: bool | str = True,
+        show_unstable: bool = False,
+        show_stable_points: bool = True,
+        filename=None):
+    """Plot ensemble median convex hull with quantile error bars.
+
+    For a single pore radius and defect concentration, compute the convex
+    hull of formation energies (formation energy vs. filling fraction) for
+    N_ENSEMBLE independent pore realizations (distinct seeds) and plot the
+    median hull, with the QUANTILES range (default 25-75%) shown as vertical
+    error bars.  Individual realization hulls are plotted as gray lines.
+
+    Each hull is a piecewise-linear function of filling fraction; hulls are
+    interpolated onto a common filling-fraction grid before the median and
+    quantiles are computed.
+
+    Parameters
+    ----------
+    radius : float
+        Pore radius in angstroms.
+    defect_probability : float
+        Probability of defect sites.
+    norm : str or None
+        Normalization passed to get_convex_hull.
+    quiet : bool
+        If True, suppress per-step SVG output.
+    n_ensemble : int
+        Number of independent pore realizations.
+    seed_start : int
+        First seed value; the ensemble uses seeds
+        [seed_start, seed_start + n_ensemble).
+    n_grid : int
+        Number of filling-fraction points on the common interpolation grid.
+    quantiles : tuple of float
+        Lower and upper quantiles for the error bars (default 0.25, 0.75).
+    show_individual : bool | str
+        If True, plot each individual realization's hull as an opaque gray
+        line behind the median.
+        If string 'only', only plot individual hulls but not the median.
+    show_unstable : bool
+        If True, plot the unstable (non-hull) states of each realization
+        as points above the hull (default False).
+    show_stable_points : bool
+        If True, plot the stable (hull) states of each realization as
+        points (default True).
+    filename : str or None
+        Base filename (without extension) for the saved figures.  If None,
+        a name is derived from radius and defect_probability.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes of the created plot.
+    """
+    tasks = [
+        (radius, defect_probability, norm, quiet, seed)
+        for seed in range(seed_start, seed_start + n_ensemble)
+    ]
+    with Pool() as pool:
+        results = pool.starmap(get_convex_hull, tasks)
+
+    grid = np.linspace(0.0, 1.0, n_grid)
+    hull_energies = np.full((n_ensemble, n_grid), np.nan)
+    for i, (fraction, energy, _unstable_fractions, _unstable_energy) in enumerate(results):
+        hull_energies[i, :] = _interp_profile(fraction, energy, grid)
+
+    median = np.nanmedian(hull_energies, axis=0)
+    q_lo = np.nanquantile(hull_energies, quantiles[0], axis=0)
+    q_hi = np.nanquantile(hull_energies, quantiles[1], axis=0)
+
+    setup_mpl_style()
+    fig, ax = plt.subplots(1, 1)
+
+    if show_individual:
+        for fraction, energy, _unstable_fractions, _unstable_energy in results:
+            ax.plot(
+                np.asarray(fraction) * 100,
+                energy,
+                color='gray',
+                alpha=1.0,
+                linewidth=0.5,
+                zorder=1)
+
+    if show_stable_points:
+        stable_fraction = []
+        stable_energy = []
+        for fraction, energy, _unstable_fractions, _unstable_energy in results:
+            stable_fraction.extend(np.asarray(fraction) * 100)
+            stable_energy.extend(np.asarray(energy))
+        if stable_fraction:
+            ax.plot(
+                stable_fraction,
+                stable_energy,
+                'o',
+                color='blue',
+                markersize=3,
+                alpha=1,
+                label='stable states',
+                zorder=2)
+
+    if show_unstable:
+        unstable_fraction = []
+        unstable_energy = []
+        for _fraction, _energy, ufractions, uenergies in results:
+            unstable_fraction.extend(np.asarray(ufractions) * 100)
+            unstable_energy.extend(np.asarray(uenergies))
+        if unstable_fraction:
+            ax.plot(
+                unstable_fraction,
+                unstable_energy,
+                'o',
+                color='C1',
+                markersize=4,
+                alpha=0.1,
+                label='unstable states',
+                zorder=2)
+
+    if show_individual != 'only':
+        ax.errorbar(
+            grid * 100,
+            median,
+            yerr=[median - q_lo, q_hi - median],
+            fmt='-o',
+            markersize=3,
+            capsize=2,
+            elinewidth=1,
+            color='black',
+            label=(
+                f'median (error bars: {quantiles[0] * 100:.0f}'
+                f'-{quantiles[1] * 100:.0f}%)'
+            ))
+    ax.set_xlabel('Filling ratio $Na_{x}C_{sites}$ (%)')
+    if norm is None:
+        ylabel = 'Formation energy, eV'
+    elif norm == 'pore':
+        ylabel = 'Formation energy, eV/site'
+    else:
+        ylabel = 'Formation energy, eV/Na'
+    ax.set_ylabel(ylabel)
+    ax.set_title(
+        f'Ensemble convex hull (r={radius:.0f} Å, '
+        f'defects={defect_probability * 100:.1f}%)',
+        fontsize=10)
+    ax.legend()
+
+    if filename is None:
+        filename = (
+            f"convex_hull_ensemble_r{radius:.0f}"
+            f"_p{defect_probability:.2f}_{seed_start}_{n_ensemble}")
+    plt.savefig(f'{filename}.svg')
+    plt.savefig(f'{filename}.png')
+    return ax
+
+
 def compute_median_filling_voltages(
         radii: Sequence[int],
         defect_probabilities: Sequence[float],
