@@ -326,6 +326,7 @@ def plot_voltage_profile_ensemble(
         seed_start=0,
         quantiles=(0.25, 0.75),
         show_individual: bool | str = False,
+        ylim=None,
         filename=None):
     """Plot ensemble median voltage profile with quantile shaded band.
 
@@ -366,6 +367,9 @@ def plot_voltage_profile_ensemble(
         as an opaque gray line behind the median/quantile markers.
         If string 'only', do not plot medians at all, just the individual
         voltage profiles.
+    ylim : tuple of float or None
+        Optional y-axis limits (ymin, ymax).  If None, matplotlib
+        auto-scales the voltage axis.
     filename : str or None
         Base filename (without extension) for the saved figures.  If None,
         a name is derived from the radii and defect_probability.
@@ -459,6 +463,8 @@ def plot_voltage_profile_ensemble(
             f'band: {quantiles[0] * 100:.0f}-{quantiles[1] * 100:.0f}%)',
             fontsize=10)
     ax.legend()
+    if ylim is not None:
+        ax.set_ylim(ylim)
     # ax.grid()
 
     if filename is None:
