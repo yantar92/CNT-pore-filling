@@ -293,6 +293,30 @@ def _interp_profile(fraction, value, grid):
     return np.interp(grid, fraction[unique_idx], value[unique_idx])
 
 
+def _step_resample(fraction, value, grid):
+    """Resample a step profile onto GRID using left values.
+
+    ``fraction`` and ``value`` describe a step function: ``value[i]`` is
+    constant on ``[fraction[i], fraction[i+1])``.  For each point in
+    ``grid``, return the value at the largest fraction not exceeding it
+    (the value to its left).  Points below the first fraction have no
+    left value and are filled with NaN.
+    """
+    fraction = np.asarray(fraction, dtype=float)
+    value = np.asarray(value, dtype=float)
+    grid = np.asarray(grid, dtype=float)
+
+    order = np.argsort(fraction, kind='stable')
+    fraction = fraction[order]
+    value = value[order]
+
+    idx = np.searchsorted(fraction, grid, side='right') - 1
+    result = np.full(grid.shape, np.nan, dtype=value.dtype)
+    valid = idx >= 0
+    result[valid] = value[idx[valid]]
+    return result
+
+
 def plot_voltage_profile_ensemble(
         radius,
         defect_probability=0,
@@ -300,26 +324,30 @@ def plot_voltage_profile_ensemble(
         quiet=True,
         n_ensemble=100,
         seed_start=0,
-        n_grid=50,
         quantiles=(0.25, 0.75),
         show_individual: bool | str = False,
         filename=None):
-    """Plot ensemble median voltage profile with quantile error bars.
+    """Plot ensemble median voltage profile with quantile shaded band.
 
-    For a single pore radius and defect concentration, compute the
-    voltage profile (voltage vs. filling fraction) for N_ENSEMBLE
+    For one or more pore radii at a fixed defect concentration, compute
+    the voltage profile (voltage vs. filling fraction) for N_ENSEMBLE
     independent pore realizations (distinct seeds) and plot the median
     voltage against the filling fraction, with the QUANTILES range
-    (default 25-75%) shown as vertical error bars.
+    (default 25-75%) shown as a shaded band.  When RADIUS is a
+    sequence, each radius is plotted on the same axes with a distinct
+    color.
 
-    Because each realization can have a slightly different number of
-    valid sites, profiles are interpolated onto a common filling-fraction
-    grid before computing the median and quantiles.
+    ``get_voltage_profile`` returns a step function of the filling
+    fraction.  The per-realization fraction axes are merged into a single
+    shared grid; when a realization lacks a grid point, the voltage from
+    the nearest smaller fraction (the left value of the step) is used.
+    The median and quantiles are computed at the merged grid positions
+    rather than by interpolating or averaging the step profiles.
 
     Parameters
     ----------
-    radius : float
-        Pore radius in angstroms.
+    radius : float or sequence of float
+        Pore radius (or radii) in angstroms.
     defect_probability : float
         Probability of defect sites.
     norm : str or None
@@ -327,84 +355,122 @@ def plot_voltage_profile_ensemble(
     quiet : bool
         If True, suppress per-step SVG output.
     n_ensemble : int
-        Number of independent pore realizations.
+        Number of independent pore realizations per radius.
     seed_start : int
-        First seed value; the ensemble uses seeds
+        First seed value; each radius uses seeds
         [seed_start, seed_start + n_ensemble).
-    n_grid : int
-        Number of filling-fraction points on the common interpolation grid.
     quantiles : tuple of float
-        Lower and upper quantiles for the error bars (default 0.25, 0.75).
-    show_individual : bool | srt
+        Lower and upper quantiles for the shaded band (default 0.25, 0.75).
+    show_individual : bool | str
         If True, also plot each individual realization's voltage profile
         as an opaque gray line behind the median/quantile markers.
         If string 'only', do not plot medians at all, just the individual
         voltage profiles.
     filename : str or None
         Base filename (without extension) for the saved figures.  If None,
-        a name is derived from radius and defect_probability.
+        a name is derived from the radii and defect_probability.
 
     Returns
     -------
     matplotlib.axes.Axes
         The axes of the created plot.
     """
-    tasks = [
-        (radius, defect_probability, norm, quiet, seed)
-        for seed in range(seed_start, seed_start + n_ensemble)
-    ]
-    with Pool() as pool:
-        results = pool.starmap(get_voltage_profile, tasks)
-
-    grid = np.linspace(0.0, 1.0, n_grid)
-    voltages = np.full((n_ensemble, n_grid), np.nan)
-    for i, (fraction, voltage) in enumerate(results):
-        voltages[i, :] = _interp_profile(fraction, voltage, grid)
-
-    median = np.nanmedian(voltages, axis=0)
-    q_lo = np.nanquantile(voltages, quantiles[0], axis=0)
-    q_hi = np.nanquantile(voltages, quantiles[1], axis=0)
+    if np.isscalar(radius):
+        radii = [radius]
+    else:
+        radii = list(radius)
 
     setup_mpl_style()
     fig, ax = plt.subplots(1, 1)
 
-    if show_individual:
-        for i, (fraction, voltage) in enumerate(results):
-            ax.step(
-                np.array(fraction) * 100,
-                voltage,
-                color='gray',
-                alpha=1 if n_ensemble < 10 else 0.1,
-                linewidth=0.5,
-                zorder=1)
+    for radius in radii:
 
-    if show_individual != 'only':
-        ax.errorbar(
-            grid * 100,
-            median,
-            yerr=[median - q_lo, q_hi - median],
-            fmt='o',
-            markersize=3,
-            capsize=2,
-            elinewidth=1,
-            color='black',
-            label=(
-                f'median (error bars: {quantiles[0] * 100:.0f}'
-                f'-{quantiles[1] * 100:.0f}%)'
-            ))
+        tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
+        diameter_nm = tem.real_radius_angstrom * 2 / 10.0
+
+        tasks = [
+            (radius, defect_probability, norm, quiet, seed)
+            for seed in range(seed_start, seed_start + n_ensemble)
+        ]
+        with Pool() as pool:
+            results = pool.starmap(get_voltage_profile, tasks)
+
+        fractions = []
+        voltage_rows = []
+        for fraction, voltage in results:
+            fractions.append(np.asarray(fraction, dtype=float))
+            voltage_rows.append(np.asarray(voltage, dtype=float))
+
+        # Merge the per-realization fraction axes into a single shared
+        # grid.  get_voltage_profile returns a step profile: the voltage
+        # at fractions[i] is valid until the next larger fraction.  When
+        # a merged grid point is missing from a realization, take the
+        # voltage from the nearest smaller fraction (the left value of
+        # the step) instead of requiring identical axes.
+        merged = np.unique(np.concatenate(fractions))
+        voltages = np.vstack([
+            _step_resample(fraction, voltage, merged)
+            for fraction, voltage in zip(fractions, voltage_rows)
+        ])
+        median = np.nanmedian(voltages, axis=0)
+        q_lo = np.nanquantile(voltages, quantiles[0], axis=0)
+        q_hi = np.nanquantile(voltages, quantiles[1], axis=0)
+        fraction = merged * 100
+
+        if show_individual:
+            for fraction_i, voltage in results:
+                ax.step(
+                    np.array(fraction_i) * 100,
+                    voltage,
+                    color='gray',
+                    alpha=1 if n_ensemble < 10 else 0.1,
+                    linewidth=0.5,
+                    zorder=1)
+
+        if show_individual != 'only':
+            line = ax.plot(
+                fraction,
+                median,
+                'o-',
+                markerfacecolor='white',
+                linewidth=1.5,
+                label=f'd = {diameter_nm:.1f} nm',
+                zorder=3)
+            color = line[0].get_color()
+            ax.fill_between(
+                fraction,
+                q_lo,
+                q_hi,
+                color=color,
+                alpha=0.3,
+                zorder=2)
+
     ax.set_xlabel('Filling ratio (%)')
     ax.set_ylabel('Voltage, V')
-    ax.set_title(
-        f'Ensemble voltage profile (r={radius:.0f} Å, '
-        f'defects={defect_probability * 100:.1f}%)',
-        fontsize=10)
+    if len(radii) == 1:
+        ax.set_title(
+            f'Ensemble voltage profile (r={radii[0]:.0f} Å, '
+            f'defects={defect_probability * 100:.1f}%, '
+            f'band: {quantiles[0] * 100:.0f}-{quantiles[1] * 100:.0f}%)',
+            fontsize=10)
+    else:
+        ax.set_title(
+            f'Ensemble voltage profile (defects={defect_probability * 100:.1f}%, '
+            f'band: {quantiles[0] * 100:.0f}-{quantiles[1] * 100:.0f}%)',
+            fontsize=10)
     ax.legend()
     # ax.grid()
 
     if filename is None:
-        filename = (
-            f"voltage_profile_ensemble_r{radius:.0f}"
-            f"_p{defect_probability:.2f}_{seed_start}_{n_ensemble}")
+        if len(radii) == 1:
+            filename = (
+                f"voltage_profile_ensemble_r{radii[0]:.0f}"
+                f"_p{defect_probability:.2f}_{seed_start}_{n_ensemble}")
+        else:
+            filename = (
+                f"voltage_profile_ensemble_r"
+                f"{'_'.join(f'{r:.0f}' for r in radii)}"
+                f"_p{defect_probability:.2f}_{seed_start}_{n_ensemble}")
     plt.savefig(f'{filename}.svg')
     plt.savefig(f'{filename}.png')
     return ax
@@ -734,7 +800,9 @@ def plot_filling_voltages(
         n_ensemble: int = 100,
         seed_start: int = 0,
         fit_label: bool = True,
-        colormap_name: str = 'viridis'
+        colormap_name: str = 'viridis',
+        xlim = None,
+        ylim = None,
         ) -> None:
     """Plot filling voltage vs. pore diameter.
 
@@ -789,6 +857,10 @@ def plot_filling_voltages(
     ax.set_ylabel('Filling voltage, V')
     ax.set_title('Filling voltage')
     ax.legend()
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
     if len(defect_probabilities) == 1:
         name = f"filling_voltage_{defect_probabilities[0]:.2f}"
     else:
