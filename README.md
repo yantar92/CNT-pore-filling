@@ -55,8 +55,10 @@ scan generation, parallel execution, and publication‑ready analysis.
 ## Installation & dependencies
 
 The simulation requires Python 3 with `numpy`, `matplotlib`,
-`pandas`, and `seaborn` (for plot styling). GNU Parallel is needed
-for running the parameter scan in parallel.
+`pandas`, and `pymatgen` (for the voltage‑profile and convex‑hull
+analysis). `seaborn` is used by `analyze.py` for its plot style and
+is installed via the `analysis` extra. GNU Parallel is needed for
+running the parameter scan in parallel.
 
 The package must be installed in development mode before the
 wrapper scripts will work:
@@ -64,8 +66,15 @@ wrapper scripts will work:
     # Install Python dependencies and the mcpore package
     pip install -e .
     
+    # For analyze.py (seaborn plot style), also install the analysis extra:
+    pip install -e '.[analysis]'
+    
     # On a typical Linux system, install GNU Parallel via your package manager
     # (e.g., on Gentoo: emerge sys‑process/parallel)
+
+After installation, the simulator is also available as the `mcpore`
+console command (or `python -m mcpore.cli`); `mc-pore.py` is a thin
+backward‑compatible wrapper.
 
 
 ## Quick start: running a single simulation
@@ -217,7 +226,7 @@ visualisation, omit `--csv` and `--quiet` and add `--visualize`.
 <td class="org-left"><code>--file</code></td>
 <td class="org-left">str</td>
 <td class="org-left"><code>None</code></td>
-<td class="org-left">Output file. If the filename ends with <code>.csv</code> or <code>.csv.gz</code>, writes the time series as CSV; otherwise writes pickle snapshots.</td>
+<td class="org-left">Output file. If the filename ends with <code>.csv</code> or <code>.csv.gz</code>, writes the time series as CSV; otherwise writes pickle snapshots. In convergence mode, each replicate gets an <code>_rN</code> suffix before the extension.</td>
 </tr>
 
 <tr>
@@ -463,7 +472,7 @@ The CSV file has the following columns (in order):
 
 <tr>
 <td class="org-left"><code>default_p_gcmc</code></td>
-<td class="org-left">Default probability of attempting a GCMC move (surface‑sites / valid‑sites).</td>
+<td class="org-left">Default probability of attempting a GCMC move (surface‑sites / (valid‑sites + surface‑sites)).</td>
 </tr>
 
 <tr>
@@ -472,12 +481,12 @@ The CSV file has the following columns (in order):
 </tr>
 
 <tr>
-<td class="org-left"><code>mcs_fill</code></td>
+<td class="org-left"><code>fill_mcs</code></td>
 <td class="org-left">Normalised MCS at which the pore first reached ≥ 99 % filling (or <code>None</code> if never reached).</td>
 </tr>
 
 <tr>
-<td class="org-left"><code>real_radius_angstrom</code></td>
+<td class="org-left"><code>real_radius</code></td>
 <td class="org-left">Actual pore radius in Å computed from the discrete lattice (may differ slightly from the requested <code>radius</code>).</td>
 </tr>
 </tbody>
@@ -506,7 +515,7 @@ Command‑line options:
 
 ## Implementation details
 
-See [1.9](#orgc45ba8a) for the semi‑grand‑canonical ensemble,
+See [1.9](#orgdfe3cd7) for the semi‑grand‑canonical ensemble,
 move set, Metropolis acceptance, and kinetic interpretation.
 
 **Default energy parameters (optB88‑vdW DFT):**
@@ -525,10 +534,12 @@ wall site is independently assigned as defective with the given
 probability.
 
 **Equilibrium detection:** The simulation monitors the
-filling‑fraction slope over a moving window (default 10 000
-samples). When the slope falls below `1×10⁻⁵` per MC step and at
-least 10 000 MC steps have been performed, the run is considered to
-have reached equilibrium and stops early.
+filling‑fraction slope over a moving window (default 4 000
+samples). When the slope falls below `1×10⁻⁸` per MC step, the run
+is considered to have reached equilibrium and stops early. By
+default the minimum‑MCS gate (`eq_min_mcs`) is `1×10⁹`, so
+equilibrium detection is effectively disabled unless the model is
+constructed with a smaller value.
 
 **p<sub>swap</sub> (non‑local swap moves):** Setting `--p_swap` to a value
 like `0.15` enables non‑local hops: a randomly chosen Na atom is
