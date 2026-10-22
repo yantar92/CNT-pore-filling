@@ -515,7 +515,7 @@ Command‑line options:
 
 ## Implementation details
 
-See [1.9](#orgdfe3cd7) for the semi‑grand‑canonical ensemble,
+See [1.9](#org2085b8b) for the semi‑grand‑canonical ensemble,
 move set, Metropolis acceptance, and kinetic interpretation.
 
 **Default energy parameters (optB88‑vdW DFT):**
@@ -692,4 +692,33 @@ model satisfying local detailed balance.
 
 This software is provided under the MIT License. If you use this
 code in your research, please acknowledge the authors.
+
+
+# Acknowledgements
+
+The work in China was supported by the Startup Fund of Qingyuan
+Innovation Laboratory (Grant No. 00524009), the Fujian Province
+High-Level Innovative and Entrepreneurial Talents Program (Grant
+No. 30225003), the National Key Research and Development Program of
+China (Grant No. 2024YFE0101600), and Natural Science Foundation of
+Fujian Province (Grant No. 2026l0007). The work in Poland was
+supported by the National Centre for Research and Development under
+the project WPC3/2022/50/KEYTECH/2024. Institutional and
+infrastructural support for the ENSEMBLE3 Centre of Excellence was
+provided through the "Centre of ExcelleNce for nanophotonicS, advancEd
+Materials and novel crystal growth-Based technoLogiEs - ENSEMBLE3"
+project which is carried out within the 2.1 International Research
+Agendas programme of the Foundation for Polish Science co-financed by
+the European Union under the European Funds for Smart Economy
+2021-2027 (FENG) and the European Union Horizon 2020 research and
+innovation program Teaming for Excellence (GA. No. 857543). The
+publication was created as part of the project of the Minister of
+Science and Higher Education "Support for the activities of Centers of
+Excellence established in Poland under the Horizon 2020 program" under
+contract No. MEiN/2023/DIR/3797. We acknowledge the Polish
+high-performance computing infrastructure, PLGrid, for granting this
+project access to computational resources under project number
+PLG/2026/019890, as well as to the LUMI supercomputer, owned by the
+EuroHPC Joint Undertaking and hosted by CSC (Finland) and the LUMI
+consortium, through project number PLL/2025/09/018974.
 
