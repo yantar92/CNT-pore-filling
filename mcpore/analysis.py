@@ -9,27 +9,48 @@ import sys
 import warnings
 from pathlib import Path
 from multiprocessing import Pool
+from functools import partial
 from typing import Sequence
 
 from mcpore.core import HardCarbonPoreModel, save_model_svg, RESULTS_CSV_COLUMNS
 from mcpore.plotting import setup_mpl_style
 
 
-def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=False, seed=None):
+def _energy_kwargs(energies: dict[str, float] | None) -> dict[str, float]:
+    """Translate pair-energy keys to model constructor arguments."""
+    names = {
+        'Na_Na': 'energy_na_na',
+        'Na_C': 'energy_na_c',
+        'Na_Defect': 'energy_na_defect',
+    }
+    if energies is None:
+        return {}
+    unknown = energies.keys() - names.keys()
+    if unknown:
+        raise ValueError(f'Unknown pair interaction energy keys: {sorted(unknown)}')
+    return {names[key]: value for key, value in energies.items()}
+
+
+def get_formation_energies(
+        radius, defect_probability=0.058*3, norm='Na', quiet=False, seed=None,
+        *, energies: dict[str, float] | None = None):
     """Get formation energy vs. concentration for pore with RADIUS.
 
     Return (filling_ratios, energies).
     Unless QUIET is True, save snapshots of the pore for each concentration.
     SEED controls the random defect placement (None leaves it unseeded).
+    ENERGIES optionally overrides pair energies in eV/bond using Na_Na,
+    Na_C, and Na_Defect keys. Omitted keys retain model defaults.
     """
     model = HardCarbonPoreModel(
         pore_radius_angstrom=radius,
         temperature_k=4000,
         defect_probability=defect_probability,
         voltage=0,
-        seed=seed)
+        seed=seed,
+        **_energy_kwargs(energies))
     filling_ratios = [0]
-    energies = [model.formation_energy(norm)]
+    formation_energies = [model.formation_energy(norm)]
     for idx in range(len(model.valid_sites)):
         min_energy = 1E100
         min_loc = None
@@ -44,18 +65,21 @@ def get_formation_energies(radius, defect_probability=0.058*3, norm='Na', quiet=
         assert min_loc is not None
         model.grid[min_loc] = model.NA
         filling_ratios.append(model.get_filling_fraction())
-        energies.append(model.formation_energy(norm))
+        formation_energies.append(model.formation_energy(norm))
         if not quiet:
             save_model_svg(model, f'test_{radius}_{defect_probability:.3f}_{idx:03d}.svg')
-    return filling_ratios, energies
+    return filling_ratios, formation_energies
 
 
-def plot_filled_pore_energy():
+def plot_filled_pore_energy(*, energies: dict[str, float] | None = None):
     """Plot formation energy of the pore vs. pore radius.
 
-    Consider the pore to be fully filled.
+    Consider the pore to be fully filled. ENERGIES uses the pair keys of
+    get_formation_energies and overrides supplied energies in all four curves.
     """
     energy_na_na = -0.35
+    # Verify values.
+    _energy_kwargs(energies)
     formation_energies = []
     formation_energies2 = []
     formation_energies3 = []
@@ -87,6 +111,9 @@ def plot_filled_pore_energy():
             energy_na_c=0,
             energy_na_na=energy_na_na,
             voltage=0)
+        for pore_model in (model, model2, model3, model4):
+            for key, value in (energies or {}).items():
+                pore_model.energies[key] = value
         # Fill the pore
         for m in [model, model2, model3, model4]:
             for r, c in m.valid_sites:
@@ -101,7 +128,9 @@ def plot_filled_pore_energy():
     ax.plot(inv_radiuses, formation_energies, 'o-', label='Na in Na')
     ax.plot(inv_radiuses, formation_energies2, 'o-', label='Na in C')
     ax.plot(inv_radiuses, formation_energies3, 'o-', label='Na in C (with defects)')
-    ax.plot(inv_radiuses, formation_energies4, 'o-', label='Na in C (Na-C = 0eV)')
+    wall_energy = (energies or {}).get('Na_C', 0)
+    ax.plot(inv_radiuses, formation_energies4, 'o-',
+            label=f'Na in C (Na-C = {wall_energy:g}eV)')
     ax.set_xlabel('Reciprocal radius, 1/Å')
     ax.set_ylabel('Formation energy, eV/atom')
     ax.set_title('Formation energy of fully filled pore (Na in Na)')
@@ -112,8 +141,12 @@ def plot_filled_pore_energy():
 
 def plot_filling_barriers(
         defect_probabilities=None,
-        radii=None):
-    """Plot maximum formation barrier vs. pore diameter for a range of defect densities."""
+        radii=None,
+        *, energies: dict[str, float] | None = None):
+    """Plot maximum formation barriers with optional pair ENERGIES overrides.
+
+    ENERGIES uses the keys and defaults of get_formation_energies.
+    """
     if defect_probabilities is None:
         defect_probabilities = [0, 0.012, 0.015, 0.02, 0.03, 0.05, 0.1, 0.058*3, 0.25]
     if radii is None:
@@ -142,12 +175,16 @@ def plot_filling_barriers(
             N_SAMPLES = 100
             with Pool() as pool:
                 args = [(radius, defect_probability, None, True) for _ in range(N_SAMPLES)]
-                results = pool.starmap(get_formation_energies, args)
+                results = pool.starmap(
+                    partial(get_formation_energies, energies=energies), args)
             max_energies = []
-            for filling_ratios, energies in results:
-                energies = [e - x * energies[-1] - (1 - x) * energies[0]
-                            for x, e in zip(filling_ratios, energies)]
-                max_energies.append(max(energies))
+            for filling_ratios, formation_energies in results:
+                relative_energies = [
+                    energy - fraction * formation_energies[-1]
+                    - (1 - fraction) * formation_energies[0]
+                    for fraction, energy in zip(filling_ratios, formation_energies)
+                ]
+                max_energies.append(max(relative_energies))
             max_en = np.median(max_energies)
             max_en_q1 = np.quantile(max_energies, 0.25)
             max_en_q3 = np.quantile(max_energies, 0.75)
@@ -176,19 +213,23 @@ def plot_formation_energies(
         radii=None,
         defect_probability=0.058*3,
         norm='pore',
-        temperature=0):
-    """Plot formation energies as a function of filling ratio for multiple radii."""
+        temperature=0,
+        *, energies: dict[str, float] | None = None):
+    """Plot formation energies versus filling ratio for multiple radii.
+
+    ENERGIES uses the keys and defaults of get_formation_energies.
+    """
     if radii is None:
         radii = [5, 6, 10, 16, 20, 24, 30]
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     for radius in radii:
-        filling_ratios, energies = get_formation_energies(
-            radius, defect_probability, norm=norm, quiet=True)
+        filling_ratios, formation_energies = get_formation_energies(
+            radius, defect_probability, norm=norm, quiet=True, energies=energies)
         if temperature > 0:
             free_energies = []
             tmp_model = HardCarbonPoreModel()
-            for c, en in zip(filling_ratios, energies):
+            for c, en in zip(filling_ratios, formation_energies):
                 if np.isclose(c, 0) or np.isclose(c, 1):
                     free_energies.append(en)
                 else:
@@ -196,8 +237,8 @@ def plot_formation_energies(
                         en - tmp_model.kB * temperature * (
                             - c * np.log(c) - (1 - c) * np.log(1 - c)
                         ))
-            energies = free_energies
-        ax.plot(filling_ratios, energies, 'o-', label=f'{radius}Å')
+            formation_energies = free_energies
+        ax.plot(filling_ratios, formation_energies, 'o-', label=f'{radius}Å')
     ax.set_xlabel('Filling ratio')
     name = 'Formation energy' if np.isclose(temperature, 0) else 'Free energy'
     if norm is None:
@@ -216,7 +257,9 @@ def plot_formation_energies(
     plt.savefig(f'{name}.png')
 
 
-def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True, seed=None):
+def get_voltage_profile(
+        radius, defect_probability=0, norm=None, quiet=True, seed=None,
+        *, energies: dict[str, float] | None = None):
     """Compute voltage profile for a pore of given RADIUS.
 
     Calls get_formation_energies internally, then uses pymatgen to
@@ -236,6 +279,10 @@ def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True, see
         Random seed for the pore's defect placement (passed to
         get_formation_energies).  None leaves the RNG unseeded.
 
+    energies : dict or None
+        Pair energies in eV/bond with optional Na_Na, Na_C, and Na_Defect
+        keys. Omitted keys retain model defaults.
+
     Returns
     -------
     filling_fraction : list of float
@@ -249,7 +296,8 @@ def get_voltage_profile(radius, defect_probability=0, norm=None, quiet=True, see
     from pymatgen.core import Composition
 
     _, energies = get_formation_energies(
-        radius, defect_probability, norm=norm, quiet=quiet, seed=seed)
+        radius, defect_probability, norm=norm, quiet=quiet, seed=seed,
+        energies=energies)
     n_na = len(energies) - 1
 
     na_entry = ComputedEntry(Composition("Na"), 0)
@@ -327,7 +375,8 @@ def plot_voltage_profile_ensemble(
         quantiles=(0.25, 0.75),
         show_individual: bool | str = False,
         ylim=None,
-        filename=None):
+        filename=None,
+        *, energies: dict[str, float] | None = None):
     """Plot ensemble median voltage profile with quantile shaded band.
 
     For one or more pore radii at a fixed defect concentration, compute
@@ -374,6 +423,10 @@ def plot_voltage_profile_ensemble(
         Base filename (without extension) for the saved figures.  If None,
         a name is derived from the radii and defect_probability.
 
+    energies : dict or None
+        Pair energies in eV/bond with optional Na_Na, Na_C, and Na_Defect
+        keys. Omitted keys retain model defaults.
+
     Returns
     -------
     matplotlib.axes.Axes
@@ -397,7 +450,8 @@ def plot_voltage_profile_ensemble(
             for seed in range(seed_start, seed_start + n_ensemble)
         ]
         with Pool() as pool:
-            results = pool.starmap(get_voltage_profile, tasks)
+            results = pool.starmap(
+                partial(get_voltage_profile, energies=energies), tasks)
 
         fractions = []
         voltage_rows = []
@@ -482,7 +536,9 @@ def plot_voltage_profile_ensemble(
     return ax
 
 
-def get_convex_hull(radius, defect_probability=0, norm='pore', quiet=True, seed=None):
+def get_convex_hull(
+        radius, defect_probability=0, norm='pore', quiet=True, seed=None,
+        *, energies: dict[str, float] | None = None):
     """Compute the convex hull of formation energies for a pore realization.
 
     Total formation energies for a single pore are obtained from
@@ -508,6 +564,10 @@ def get_convex_hull(radius, defect_probability=0, norm='pore', quiet=True, seed=
     seed : int or None
         Random seed for the pore's defect placement.
 
+    energies : dict or None
+        Pair energies in eV/bond with optional Na_Na, Na_C, and Na_Defect
+        keys. Omitted keys retain model defaults.
+
     Returns
     -------
     fraction : list of float
@@ -525,7 +585,8 @@ def get_convex_hull(radius, defect_probability=0, norm='pore', quiet=True, seed=
     from pymatgen.core import Composition, Element
 
     _, energies = get_formation_energies(
-        radius, defect_probability, norm=None, quiet=quiet, seed=seed)
+        radius, defect_probability, norm=None, quiet=quiet, seed=seed,
+        energies=energies)
     n_sites = len(energies) - 1
 
     na_entry = ComputedEntry(Composition("Na"), 0)
@@ -593,7 +654,8 @@ def plot_convex_hull_ensemble(
         show_individual: bool | str = True,
         show_unstable: bool = False,
         show_stable_points: bool = True,
-        filename=None):
+        filename=None,
+        *, energies: dict[str, float] | None = None):
     """Plot ensemble median convex hull with quantile error bars.
 
     For a single pore radius and defect concentration, compute the convex
@@ -639,6 +701,10 @@ def plot_convex_hull_ensemble(
         Base filename (without extension) for the saved figures.  If None,
         a name is derived from radius and defect_probability.
 
+    energies : dict or None
+        Pair energies in eV/bond with optional Na_Na, Na_C, and Na_Defect
+        keys. Omitted keys retain model defaults.
+
     Returns
     -------
     matplotlib.axes.Axes
@@ -649,7 +715,8 @@ def plot_convex_hull_ensemble(
         for seed in range(seed_start, seed_start + n_ensemble)
     ]
     with Pool() as pool:
-        results = pool.starmap(get_convex_hull, tasks)
+        results = pool.starmap(
+            partial(get_convex_hull, energies=energies), tasks)
 
     grid = np.linspace(0.0, 1.0, n_grid)
     hull_energies = np.full((n_ensemble, n_grid), np.nan)
@@ -750,7 +817,8 @@ def compute_median_filling_voltages(
         norm=None,
         quiet=True,
         n_ensemble: int = 100,
-        seed_start: int = 0):
+        seed_start: int = 0,
+        *, energies: dict[str, float] | None = None):
     """Compute median final filling voltage over an ensemble of pores.
 
     For each (radius, defect_probability) pair, N_ENSEMBLE independent
@@ -774,6 +842,10 @@ def compute_median_filling_voltages(
         First seed value; the ensemble uses seeds
         [seed_start, seed_start + n_ensemble).
 
+    energies : dict or None
+        Pair energies in eV/bond with optional Na_Na, Na_C, and Na_Defect
+        keys. Omitted keys retain model defaults.
+
     Returns
     -------
     dict
@@ -787,7 +859,8 @@ def compute_median_filling_voltages(
         for seed in range(seed_start, seed_start + n_ensemble)
     ]
     with Pool() as pool:
-        results = pool.starmap(get_voltage_profile, tasks)
+        results = pool.starmap(
+            partial(get_voltage_profile, energies=energies), tasks)
 
     voltages_by_key = {}
     for (radius, dp, _norm, _quiet, _seed), (_fraction, voltage) in zip(tasks, results):
@@ -809,10 +882,11 @@ def plot_filling_voltages(
         colormap_name: str = 'viridis',
         xlim = None,
         ylim = None,
-        ) -> None:
+        *, energies: dict[str, float] | None = None) -> None:
     """Plot filling voltage vs. pore diameter.
 
     Uses pymatgen to compute insertion voltages from formation energies.
+    ENERGIES uses the keys and defaults of get_formation_energies.
     Each point is the median final filling voltage over N_ENSEMBLE
     independent pore realizations.
     """
@@ -830,7 +904,7 @@ def plot_filling_voltages(
 
     medians = compute_median_filling_voltages(
         radii, defect_probabilities, norm=norm, quiet=quiet,
-        n_ensemble=n_ensemble, seed_start=seed_start)
+        n_ensemble=n_ensemble, seed_start=seed_start, energies=energies)
 
     if len(defect_probabilities) == 1:
         colors = ['black']
@@ -883,7 +957,8 @@ def plot_filling_voltages_vs_defects(
         norm=None,
         quiet=True,
         n_ensemble=100,
-        seed_start=0):
+        seed_start=0,
+        *, energies: dict[str, float] | None = None):
     """Plot filling voltage vs. number of defects for multiple pore sizes.
 
     One curve per pore size (radius).  The filling voltage for each
@@ -893,7 +968,8 @@ def plot_filling_voltages_vs_defects(
     The x-axis is the defect concentration (number of defect sites divided
     by the number of wall sites), not the nominal defect_probability.
     Averaging over an ensemble washes out details of the random defect
-    placement for a single pore.
+    placement for a single pore. ENERGIES uses the keys and defaults of
+    get_formation_energies.
     """
     if defect_probabilities is None:
         defect_probabilities = [0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.15, 0.20, 0.25]
@@ -906,7 +982,7 @@ def plot_filling_voltages_vs_defects(
 
     medians = compute_median_filling_voltages(
         radii, defect_probabilities, norm=norm, quiet=quiet,
-        n_ensemble=n_ensemble, seed_start=seed_start)
+        n_ensemble=n_ensemble, seed_start=seed_start, energies=energies)
 
     rows = []
     for radius in radii:
@@ -941,10 +1017,13 @@ def plot_filling_voltages_vs_defects(
     plt.savefig(f'{name}.png')
 
 
-def plot_voltages(radii=None, defect_probability=0.058*3):
+def plot_voltages(
+        radii=None, defect_probability=0.058*3,
+        *, energies: dict[str, float] | None = None):
     """Plot voltage profiles (voltage vs. filling ratio) for multiple radii.
 
     Uses pymatgen to compute insertion voltages from formation energies.
+    ENERGIES uses the keys and defaults of get_formation_energies.
     """
     setup_mpl_style()
     if radii is None:
@@ -953,7 +1032,7 @@ def plot_voltages(radii=None, defect_probability=0.058*3):
     fig, ax = plt.subplots(1, 1)
     for radius in radii:
         tem = HardCarbonPoreModel(pore_radius_angstrom=radius)
-        x, voltage = get_voltage_profile(radius, defect_probability)
+        x, voltage = get_voltage_profile(radius, defect_probability, energies=energies)
         ax.plot(np.array(x) * 100, voltage, 'o-',
                 label=f'{tem.real_radius_angstrom:.2f} Å')
     ax.set_xlabel('Filling ratio (%)')
