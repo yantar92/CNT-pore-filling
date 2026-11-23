@@ -515,7 +515,7 @@ Command‑line options:
 
 ## Implementation details
 
-See [1.9](#org2085b8b) for the semi‑grand‑canonical ensemble,
+See [1.9](#orgdca2b9e) for the semi‑grand‑canonical ensemble,
 move set, Metropolis acceptance, and kinetic interpretation.
 
 **Default energy parameters (optB88‑vdW DFT):**
@@ -710,7 +710,7 @@ Materials and novel crystal growth-Based technoLogiEs - ENSEMBLE3"
 project which is carried out within the 2.1 International Research
 Agendas programme of the Foundation for Polish Science co-financed by
 the European Union under the European Funds for Smart Economy
-2021-2027 (FENG) and the European Union Horizon 2020 research and
+2021-2027 (FENG.02.01-IP.05-0044/24) and the European Union Horizon 2020 research and
 innovation program Teaming for Excellence (GA. No. 857543). The
 publication was created as part of the project of the Minister of
 Science and Higher Education "Support for the activities of Centers of
